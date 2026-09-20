@@ -134,8 +134,9 @@ aidtrace/
 │  ├─ design.md
 │  ├─ task.md
 │  └─ memory.md
-├─ Anchor.toml
-├─ Cargo.toml
+├─ anchor/
+│  ├─ Anchor.toml
+│  └─ Cargo.toml
 ├─ package.json
 └─ README.md
 ```
@@ -241,6 +242,35 @@ This is delegated during surge windows.
 #### Allocation / Disbursement / Verification
 
 Use separate PDAs where history needs direct addressability. For very high-volume immutable donation history, prefer event indexing plus minimal canonical aggregate state unless the product needs one account per donation.
+
+### 5.1.1 v1 account layout and authority contract
+
+All PDAs are owned by the AidTrace program and sizes below include Anchor's
+8-byte discriminator. Digest fields are fixed `[u8; 32]` SHA-256 values; URLs,
+CIDs, and mutable text belong in the off-chain projection/evidence layer.
+
+| Account                | PDA seeds                                                     | Size | Authority / allowed writer                                                          | Lifecycle in this task         |
+| ---------------------- | ------------------------------------------------------------- | ---: | ----------------------------------------------------------------------------------- | ------------------------------ |
+| `GlobalConfig`         | `['config']`                                                  |   77 | One-time deployer initialization; recorded admin controls future privileged changes | Initialized                    |
+| `Organization`         | `['org', authority]`                                          |   90 | Organization authority                                                              | Initialized                    |
+| `Campaign`             | `['campaign', organization, campaign_id_le]`                  |  163 | Matching organization authority                                                     | Initialized as `Draft`         |
+| `Allocation`           | `['allocation', campaign, allocation_id_le]`                  |  146 | Future campaign authority flow                                                      | Defined only                   |
+| `Disbursement`         | `['disbursement', allocation, disbursement_id_le]`            |  202 | Future authorized allocation flow                                                   | Defined only                   |
+| `DeliveryVerification` | `['delivery_verification', disbursement, verification_id_le]` |  123 | Future registered verifier flow                                                     | Defined only                   |
+| `TrustScore`           | `['trust', subject]`                                          |   92 | Future constrained trust updater                                                    | Defined only; no ER delegation |
+| `FraudFlag`            | `['fraud_flag', subject]`                                     |   84 | Future human/settlement resolution flow                                             | Defined only                   |
+| `FundingCounter`       | `['funding_counter', campaign]`                               |   73 | Future confirmed-event relayer flow                                                 | Defined only; never custody    |
+
+`Organization.next_campaign_id`, `Campaign.next_allocation_id`,
+`Allocation.next_disbursement_id`, and
+`Disbursement.next_delivery_verification_id` are parent-scoped `u64` counters.
+The client supplies an expected ID to derive an address, but the program accepts
+it only when it equals the canonical parent counter and then increments that
+counter with checked arithmetic.
+
+`initialize_config` records its signer as both initial `admin` and
+`treasury_authority`. Deployment operations must submit it immediately after
+program deployment; no arbitrary caller can reinitialize the config PDA.
 
 ### 5.2 Program instruction surface
 

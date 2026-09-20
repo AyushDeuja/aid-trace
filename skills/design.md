@@ -125,12 +125,14 @@ Examples:
 ### Motion
 
 Allowed:
+
 - subtle counter transitions
 - skeleton/loading states
 - timeline expansion
 - success state after confirmation
 
 Avoid:
+
 - continuously pulsing balances
 - confetti for disaster donations
 - urgent flashing fraud warnings

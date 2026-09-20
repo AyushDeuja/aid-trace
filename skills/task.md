@@ -8,21 +8,24 @@
 ## Milestone 0 — Repository and toolchain lock
 
 ### M0.1 Workspace
-- [ ] Create monorepo/repository structure from `architecture.md`.
-- [ ] Install project-scoped `solana-dev` skill.
-- [ ] Install project-scoped `magicblock` skill.
-- [ ] Record exact skill/source commit or installation version in `memory.md`.
-- [ ] Pin Node, Rust, Solana CLI, Anchor, Python versions.
-- [ ] Add `.env.example` with no secrets.
-- [ ] Add format/lint/test scripts at root.
+
+- [x] Create monorepo/repository structure from `architecture.md`.
+- [x] Install project-scoped `solana-dev` skill.
+- [x] Install project-scoped `magicblock` skill.
+- [x] Record exact skill/source commit or installation version in `memory.md`.
+- [x] Pin Node, Rust, Solana CLI, Anchor, Python versions.
+- [x] Add `.env.example` with no secrets.
+- [x] Add format/lint/test scripts at root.
 
 ### M0.2 Solana client baseline
-- [ ] Set up `@solana/kit` client.
-- [ ] Add wallet-standard connection.
-- [ ] Add cluster configuration for local/devnet.
-- [ ] Create a single transaction lifecycle utility.
+
+- [x] Set up `@solana/kit` client.
+- [x] Add wallet-standard connection.
+- [x] Add cluster configuration for local/devnet.
+- [x] Create a single transaction lifecycle utility.
 
 ### M0.3 CI
+
 - [ ] Rust fmt/clippy/test.
 - [ ] TypeScript lint/test/typecheck.
 - [ ] Python lint/test.
@@ -35,23 +38,26 @@
 # Week 1 — Canonical Solana donation vertical slice
 
 ## W1.1 Program scaffolding
-- [ ] Initialize Anchor program.
-- [ ] Implement `GlobalConfig`.
-- [ ] Implement `Organization`.
-- [ ] Implement `Campaign`.
-- [ ] Define status enums/errors/events.
-- [ ] Add PDA derivation tests.
+
+- [x] Initialize Anchor program.
+- [x] Implement `GlobalConfig`.
+- [x] Implement `Organization`.
+- [x] Implement `Campaign`.
+- [x] Define status enums/errors/events.
+- [x] Add PDA derivation tests.
 
 ## W1.2 Campaign instructions
-- [ ] `initialize_config`.
-- [ ] `register_organization`.
-- [ ] `create_campaign`.
+
+- [x] `initialize_config`.
+- [x] `register_organization`.
+- [x] `create_campaign`.
 - [ ] `activate_campaign` with human/admin authority.
 - [ ] `pause_campaign`.
 - [ ] `close_campaign`.
 - [ ] Negative authorization/status tests.
 
 ## W1.3 Donation
+
 - [ ] Select demo asset model (SOL or a fixed SPL token); document decision.
 - [ ] Implement `donate` transfer + canonical accounting.
 - [ ] Emit `DonationReceived` event.
@@ -60,6 +66,7 @@
 - [ ] Generate typed client using Codama where practical.
 
 ## W1.4 Frontend vertical slice
+
 - [ ] Landing page shell.
 - [ ] Campaign list.
 - [ ] Campaign detail.
@@ -69,6 +76,7 @@
 - [ ] Devnet donation works end-to-end.
 
 ## W1.5 Indexer baseline
+
 - [ ] Consume campaign/donation events.
 - [ ] Add idempotent transaction/event keys.
 - [ ] Populate Postgres projections.
@@ -81,6 +89,7 @@
 # Week 2 — Fund flow and verification
 
 ## W2.1 Program
+
 - [ ] Implement `Allocation`.
 - [ ] Implement `Disbursement`.
 - [ ] Implement `DeliveryVerification`.
@@ -89,12 +98,14 @@
 - [ ] Emit all relevant events.
 
 ## W2.2 Evidence
+
 - [ ] Evidence upload service abstraction.
 - [ ] IPFS/Arweave provider implementation for demo.
 - [ ] Record CID/hash in audit metadata/on-chain record as designed.
 - [ ] Evidence viewer.
 
 ## W2.3 Organization dashboard
+
 - [ ] Campaign fund-flow summary.
 - [ ] Allocation form.
 - [ ] Disbursement form.
@@ -102,6 +113,7 @@
 - [ ] Fund-trail visualization.
 
 ## W2.4 Testing
+
 - [ ] Unauthorized disbursement tests.
 - [ ] Over-disbursement tests.
 - [ ] Invalid campaign-state tests.
@@ -115,11 +127,13 @@
 # Week 3 — Fraud Agent + MagicBlock trust layer
 
 ## W3.1 Fraud data model
+
 - [ ] Define normalized transaction/entity feature schema.
 - [ ] Add `trust_evaluations` and `fraud_features` migrations.
 - [ ] Seed registry/demo organization data.
 
 ## W3.2 Fraud feature pipeline
+
 - [ ] Wallet age/activity proxy feature.
 - [ ] Funding-trace feature.
 - [ ] Donation burst/repetition features.
@@ -130,6 +144,7 @@
 - [ ] Vendor concentration/diversion feature.
 
 ## W3.3 Fraud scoring
+
 - [ ] Define deterministic rule layer.
 - [ ] Add interpretable anomaly model.
 - [ ] Define weighted score aggregation.
@@ -138,11 +153,13 @@
 - [ ] Create fixture-based tests.
 
 ## W3.4 TrustScore program accounts
+
 - [ ] Implement canonical `TrustScore` account.
 - [ ] Implement `FraudFlag` account.
 - [ ] Add initialization/authorization tests.
 
 ## W3.5 MagicBlock trust lifecycle
+
 - [ ] Verify current `ephemeral-rollups-sdk` APIs against installed skill/docs.
 - [ ] Add correct `#[ephemeral]`/delegation integration as required by current SDK.
 - [ ] Implement trust-score delegation.
@@ -158,6 +175,7 @@
 - [ ] Test commit and durable flag result.
 
 ## W3.6 Trust UI
+
 - [ ] Trust panel with score + reasons.
 - [ ] Live/canonical indicator.
 - [ ] Score history.
@@ -171,6 +189,7 @@
 # Week 4 — Disaster Agent + realtime campaign counter + Round-Up + polish
 
 ## W4.1 Disaster feed framework
+
 - [ ] Common feed adapter interface.
 - [ ] USGS adapter.
 - [ ] ReliefWeb adapter.
@@ -179,6 +198,7 @@
 - [ ] Raw payload/evidence retention.
 
 ## W4.2 Detection pipeline
+
 - [ ] Normalize events.
 - [ ] Text classifier.
 - [ ] spaCy NER/location extraction.
@@ -191,6 +211,7 @@
 - [ ] Fixture tests for duplicate and non-duplicate events.
 
 ## W4.3 Human review
+
 - [ ] Admin candidate list.
 - [ ] Candidate evidence detail.
 - [ ] Approve/reject/needs-evidence states.
@@ -198,6 +219,7 @@
 - [ ] Assert detector service itself cannot activate campaign.
 
 ## W4.4 FundingCounter MagicBlock layer
+
 - [ ] Implement canonical `FundingCounter`.
 - [ ] Delegate counter on approved campaign launch.
 - [ ] Create donation-confirmation -> ER counter update worker.
@@ -209,6 +231,7 @@
 - [ ] Undelegate/finalize on campaign close.
 
 ## W4.5 Round-Up Relief
+
 - [ ] QR parser/scanner.
 - [ ] Round-up amount calculator.
 - [ ] Explicit opt-in UI.
@@ -216,6 +239,7 @@
 - [ ] Round-up audit tagging.
 
 ## W4.6 Demo and hardening
+
 - [ ] Deterministic seed script.
 - [ ] Demo wallets with Devnet funding.
 - [ ] Demo disaster candidate fixtures if live feeds are unreliable.
