@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "magicblock": {
+      "source": "magicblock-labs/magicblock-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skill/SKILL.md",
+      "computedHash": "1da12d71e2f42e5b8f78fdc474988ec5edd18820281af632c82eca881c32fcd2"
+    },
+    "solana-dev": {
+      "source": "solana-foundation/solana-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skills/solana-dev/SKILL.md",
+      "computedHash": "1ec05821927683f89db3a394cd6a5f7fe324abe3bced90676749a9f6dfb9ce67"
+    }
+  }
+}
