@@ -1,0 +1,24 @@
+[package]
+name = "aidtrace"
+version = "0.1.0"
+description = "Canonical Solana program for AidTrace"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "aidtrace"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "=1.1.1"

@@ -345,3 +345,13 @@ When a durable decision changes:
 - The generated vault program/client is not AidTrace implementation and must not be used for product flows.
 - Frontend baseline is pinned to Next.js 16.3.4, matching the repository lockfile.
 - Program toolchain is pinned to Anchor 1.1.1 and Solana CLI 3.1.10; the local CLIs must be installed before program work begins.
+
+### v1.2 â€” canonical program foundation
+
+- Project skill sources are locked in `skills-lock.json`: `solana-foundation/solana-dev-skill` hash `1ec05821927683f89db3a394cd6a5f7fe324abe3bced90676749a9f6dfb9ce67`; `magicblock-labs/magicblock-dev-skill` hash `1da12d71e2f42e5b8f78fdc474988ec5edd18820281af632c82eca881c32fcd2`.
+- Program ID: `GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf`.
+- Account metadata/evidence references are fixed `[u8; 32]` SHA-256 digests.
+- One organization is derived per authority with `['org', authority]`.
+- Nested historical records use parent-scoped `u64` counters; callers must match the canonical next counter.
+- `GlobalConfig` is one-time initialized by the deployer, who becomes initial admin and treasury authority.
+- Organizations initialize active; campaigns initialize as `Draft`; no funds, delegation, or AI authority exists in this foundation.
