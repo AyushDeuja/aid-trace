@@ -11,6 +11,7 @@ This file is the compact persistent context for coding agents. Read it before im
 **One-line concept:** Transparent disaster-relief funding on Solana with from-scratch AI fraud/authenticity scoring, from-scratch disaster detection, and MagicBlock Ephemeral Rollups for realtime trust-score and campaign-counter updates.
 
 **Primary hackathon positioning:**
+
 - Solana core application
 - MagicBlock realtime integration
 
@@ -34,6 +35,7 @@ Never say “MagicBlock speeds up the AI.” It speeds up the on-chain consequen
 ### Solana base layer
 
 Permanent/canonical:
+
 - campaigns
 - donations/fund transfers
 - allocations
@@ -46,6 +48,7 @@ Permanent/canonical:
 ### MagicBlock ER
 
 Fast/intermediate:
+
 - delegated TrustScore updates
 - delegated FundingCounter updates
 - atomic commit-linked follow-up through Magic Actions where appropriate
@@ -53,6 +56,7 @@ Fast/intermediate:
 ### Off-chain
 
 Mutable/computational:
+
 - fraud feature extraction/scoring
 - transaction graph
 - disaster feed ingestion
@@ -79,29 +83,35 @@ Mutable/computational:
 ## 5. Current implementation stack
 
 ### Frontend
-- Next.js 14 App Router
+
+- Next.js 16 App Router
 - TypeScript
 - Tailwind
 - shadcn/ui
 
 ### Solana client
+
 Implementation refinement from current Solana development guidance:
+
 - prefer `@solana/kit`
 - Wallet Standard / current Kit wallet integration
 - Codama-generated typed clients where practical
 - isolate legacy wallet-adapter/web3.js interop if a dependency requires it
 
 ### Program
+
 - Rust
 - Anchor 1.1.x
 - MagicBlock `ephemeral-rollups-sdk` / current equivalent APIs verified against installed skill
 
 ### Testing
+
 - LiteSVM/Mollusk for fast program tests
 - Surfpool where useful for integration flows
 - normal TypeScript/Python unit/integration tests
 
 ### AI
+
 - Python
 - scikit-learn
 - NetworkX
@@ -111,6 +121,7 @@ Implementation refinement from current Solana development guidance:
 - no external LLM API for the two core runtime agents
 
 ### Data/infrastructure
+
 - PostgreSQL / Supabase
 - IPFS/Arweave evidence storage
 - Vercel frontend
@@ -181,6 +192,7 @@ Session Keys must never gain donation transfer, disbursement, treasury, campaign
 Use interpretable signals first.
 
 Donor/source signals:
+
 - wallet age/activity proxy
 - funding trace
 - repeated/circular transfers
@@ -188,6 +200,7 @@ Donor/source signals:
 - burst/repetition patterns
 
 Recipient/org signals:
+
 - registry checks
 - delivery verification history
 - disputes
@@ -195,6 +208,7 @@ Recipient/org signals:
 - vendor concentration
 
 Output:
+
 - score
 - risk band
 - reasons
@@ -223,6 +237,7 @@ ingest
 ```
 
 Planned feeds:
+
 - USGS
 - ReliefWeb
 - NOAA
@@ -237,6 +252,7 @@ AI proposes; human approves.
 Primary user story is “trace the money,” not “look at blockchain technology.”
 
 Campaign pages should expose:
+
 - amount raised
 - canonical vs realtime distinction
 - fund trail
@@ -245,6 +261,7 @@ Campaign pages should expose:
 - audit timeline
 
 Fallback behavior:
+
 - MagicBlock down -> show canonical Solana data; donation still works.
 - AI down/stale -> show assessment pending/stale; financial flow remains valid.
 
@@ -316,8 +333,15 @@ When a durable decision changes:
 ## 15. Change log
 
 ### v1 — planning baseline
+
 - Product brief converted into implementation PRD.
 - Three-tier Solana/MagicBlock/off-chain architecture locked.
 - Human approval constraint preserved.
 - Modern Solana skill guidance adopted for new client/tooling choices.
 - Four-week implementation plan created.
+
+### v1.1 â€” repository baseline reconciliation
+
+- The generated vault program/client is not AidTrace implementation and must not be used for product flows.
+- Frontend baseline is pinned to Next.js 16.3.4, matching the repository lockfile.
+- Program toolchain is pinned to Anchor 1.1.1 and Solana CLI 3.1.10; the local CLIs must be installed before program work begins.

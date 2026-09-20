@@ -74,7 +74,7 @@ flowchart LR
 
 ```text
 aidtrace/
-├─ app/                         # Next.js 14 App Router
+├─ app/                         # Next.js 16 App Router
 │  ├─ app/
 │  │  ├─ (public)/
 │  │  ├─ dashboard/
@@ -151,6 +151,7 @@ aidtrace/
 Suggested seeds: `['config']`
 
 Fields:
+
 - admin authority
 - treasury/config authority
 - protocol version
@@ -163,6 +164,7 @@ Fields:
 Suggested seeds: `['org', authority]` or `['org', organization_id]`
 
 Fields:
+
 - authority
 - metadata hash/CID digest
 - status
@@ -174,6 +176,7 @@ Fields:
 Suggested seeds: `['campaign', organization, campaign_id]`
 
 Fields:
+
 - organization
 - authority
 - campaign id
@@ -192,6 +195,7 @@ Fields:
 Suggested seeds: `['trust', subject_pubkey]`
 
 Fields:
+
 - subject
 - score `u8` or fixed normalized representation
 - risk band
@@ -208,6 +212,7 @@ This is the primary account delegated to the ER for frequent updates.
 Suggested seeds: `['fraud_flag', subject_pubkey]`
 
 Fields:
+
 - subject
 - severity
 - triggering score
@@ -223,6 +228,7 @@ FraudFlag is durable Solana state. It is not ER-only.
 Suggested seeds: `['funding_counter', campaign]`
 
 Fields:
+
 - campaign
 - realtime aggregate
 - last canonical amount
@@ -624,16 +630,21 @@ Secrets must live in deployment secret stores, never committed `.env` files.
 ## 16. Architecture decision log
 
 ### ADR-001 — Solana is canonical
+
 Accepted. No ER-only financial custody or final truth.
 
 ### ADR-002 — Human gate for disaster campaign activation
+
 Accepted. AI candidate creation is automatic; public campaign activation is not.
 
 ### ADR-003 — AI backend uses scoped Session Keys only for ER writes
+
 Accepted. No treasury signing authority.
 
 ### ADR-004 — Modern Solana Kit client stack
+
 Accepted for new client code, with compatibility adapters only where dependencies require older APIs.
 
 ### ADR-005 — Funding counter is derived realtime state
+
 Accepted. It must reconcile to canonical Solana donation data.

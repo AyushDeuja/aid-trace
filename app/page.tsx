@@ -8,7 +8,6 @@ import { useBalance } from "./lib/hooks/use-balance";
 import { lamportsToSolString } from "./lib/lamports";
 import { useSolanaClient } from "./lib/solana-client-context";
 import { ellipsify } from "./lib/explorer";
-import { VaultCard } from "./components/vault-card";
 import { GridBackground } from "./components/grid-background";
 import { ThemeToggle } from "./components/theme-toggle";
 import { ClusterSelect } from "./components/cluster-select";
@@ -82,9 +81,7 @@ export default function Home() {
       <div className="relative z-10">
         {/* Header */}
         <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-sm font-semibold tracking-tight">
-            Solana Starter Kit
-          </span>
+          <span className="text-sm font-semibold tracking-tight">AidTrace</span>
           <div className="flex items-center gap-3">
             <ThemeToggle />
             <ClusterSelect />
@@ -98,30 +95,21 @@ export default function Home() {
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="font-black tracking-tight text-foreground">
-                  <span className="block text-6xl md:text-7xl">Anchor</span>
-                  <span className="block text-7xl md:text-8xl">Vault</span>
+                  <span className="block text-6xl md:text-7xl">Aid</span>
+                  <span className="block text-7xl md:text-8xl">Trace</span>
                 </h1>
               </div>
 
               <div className="flex max-w-2xl flex-col gap-3">
                 <p className="text-base leading-relaxed text-foreground/50">
-                  This program creates a personal vault for each user using a
-                  Program Derived Address (PDA). Connect your wallet, deposit
-                  SOL into your vault, and withdraw it anytime. Only you can
-                  access your funds.
+                  Transparent disaster-relief funding, from donation to verified
+                  delivery. AidTrace is preparing its canonical Solana program
+                  foundation.
                 </p>
                 <p className="text-sm leading-relaxed text-foreground/40">
-                  The vault is an{" "}
-                  <a
-                    href="https://www.anchor-lang.com/docs/introduction"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline underline-offset-2"
-                  >
-                    Anchor
-                  </a>{" "}
-                  program you can deploy to localnet or devnet and modify
-                  yourself. Check the README for setup instructions.
+                  The program and campaign flows are being built from the
+                  project architecture. Solana remains the financial source of
+                  truth; realtime and AI state never controls custody.
                 </p>
                 <div className="flex flex-wrap gap-4">
                   <a
@@ -261,8 +249,11 @@ export default function Home() {
               </section>
             )}
 
-            {/* Vault Program Section */}
-            <VaultCard />
+            <section className="rounded-2xl border border-border-low bg-card p-6 text-sm leading-relaxed text-muted">
+              The campaign, donation, allocation, and verification flows will
+              appear here as their corresponding on-chain vertical slices are
+              completed.
+            </section>
           </div>
         </main>
       </div>

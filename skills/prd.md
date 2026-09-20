@@ -4,7 +4,7 @@
 **Product:** AidTrace  
 **Primary network:** Solana Devnet for hackathon/demo  
 **Realtime layer:** MagicBlock Ephemeral Rollups  
-**Frontend:** Next.js 14 + TypeScript + Tailwind + shadcn/ui  
+**Frontend:** Next.js 16 + TypeScript + Tailwind + shadcn/ui
 **On-chain program:** Rust + Anchor 1.1.x  
 **AI services:** Python, built from scratch; no external LLM API for the two runtime agents
 
@@ -192,6 +192,7 @@ Only authorized humans may transition `PendingReview -> Active`.
 The Python agent must support feature extraction for:
 
 **Donor/source side**
+
 - wallet age/activity proxy
 - funding trace indicators
 - repeated circular flows
@@ -200,6 +201,7 @@ The Python agent must support feature extraction for:
 - donation repetition anomalies
 
 **Recipient/org side**
+
 - registry verification result
 - delivery-verification history
 - prior disputes
