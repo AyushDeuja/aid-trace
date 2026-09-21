@@ -160,21 +160,27 @@ export function decodeOrganization(
   const pendingTag = data[72];
   if (pendingTag !== 0 && pendingTag !== 1)
     throw new Error("Invalid pending authority tag");
+  const bodyOffset = pendingTag ? 105 : 73;
+  const statusOffset = bodyOffset + 32;
+  const verifiedOffset = statusOffset + 1;
+  const verifiedDeliveryCountOffset = verifiedOffset + 1;
+  const nextCampaignIdOffset = verifiedDeliveryCountOffset + 8;
+
   const status = (["Pending", "Active", "Suspended", "Closed"] as const)[
-    data[137]
+    data[statusOffset]
   ];
-  if (!status || (data[138] !== 0 && data[138] !== 1))
+  if (!status || (data[verifiedOffset] !== 0 && data[verifiedOffset] !== 1))
     throw new Error("Invalid organization status");
   return {
     address: key,
     founder: decoder.decode(data.slice(8, 40)),
     authority: decoder.decode(data.slice(40, 72)),
     pendingAuthority: pendingTag ? decoder.decode(data.slice(73, 105)) : null,
-    metadataDigest: hex(data.slice(105, 137)),
+    metadataDigest: hex(data.slice(bodyOffset, bodyOffset + 32)),
     status,
-    verified: data[138] === 1,
-    verifiedDeliveryCount: view.getBigUint64(139, true),
-    nextCampaignId: view.getBigUint64(147, true),
+    verified: data[verifiedOffset] === 1,
+    verifiedDeliveryCount: view.getBigUint64(verifiedDeliveryCountOffset, true),
+    nextCampaignId: view.getBigUint64(nextCampaignIdOffset, true),
   };
 }
 async function assertOrganizationDiscriminator(raw: Uint8Array) {

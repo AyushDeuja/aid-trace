@@ -71,11 +71,17 @@ async function syncAccounts() {
       continue;
     const founder = decodeAddress.decode(data.subarray(8, 40));
     const authority = decodeAddress.decode(data.subarray(40, 72));
-    if (data[72] > 1 || data[137] > 3 || data[138] > 1) continue;
+    if (data[72] > 1) continue;
     const pending = data[72]
       ? decodeAddress.decode(data.subarray(73, 105))
       : null;
-    const status = ["Pending", "Active", "Suspended", "Closed"][data[137]];
+    const bodyOffset = data[72] ? 105 : 73;
+    const statusOffset = bodyOffset + 32;
+    const verifiedOffset = statusOffset + 1;
+    const verifiedDeliveryCountOffset = verifiedOffset + 1;
+    const nextCampaignIdOffset = verifiedDeliveryCountOffset + 8;
+    if (data[statusOffset] > 3 || data[verifiedOffset] > 1) continue;
+    const status = ["Pending", "Active", "Suspended", "Closed"][data[statusOffset]];
     await pool.query(
       `INSERT INTO organization_projection
       (address, founder, authority, pending_authority, metadata_digest, status, verified, verified_delivery_count, next_campaign_id, observed_slot)
@@ -92,11 +98,11 @@ async function syncAccounts() {
         founder,
         authority,
         pending,
-        data.subarray(105, 137).toString("hex"),
+        data.subarray(bodyOffset, bodyOffset + 32).toString("hex"),
         status,
-        data[138] === 1,
-        data.readBigUInt64LE(139).toString(),
-        data.readBigUInt64LE(147).toString(),
+        data[verifiedOffset] === 1,
+        data.readBigUInt64LE(verifiedDeliveryCountOffset).toString(),
+        data.readBigUInt64LE(nextCampaignIdOffset).toString(),
         slot,
       ]
     );
