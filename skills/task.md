@@ -50,6 +50,8 @@
 
 - [x] `initialize_config`.
 - [x] `register_organization`.
+- [ ] Validate pending organization registration, admin verification/status controls, and two-step authority transfer in a local program environment.
+- [ ] Validate organization registration/admin UI and Postgres organization projection end to end.
 - [x] `create_campaign`.
 - [ ] `activate_campaign` with human/admin authority.
 - [ ] `pause_campaign`.

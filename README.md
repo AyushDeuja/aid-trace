@@ -48,3 +48,17 @@ Work through the AidTrace ClickUp list in sequence. The immediate next task is
 the on-chain data model and program foundation. Every financial change needs
 program-level authority, PDA, state-transition, arithmetic, and negative-path
 tests before it is considered done.
+
+# Organization registration
+
+Run PostgreSQL, set `DATABASE_URL` and `SOLANA_RPC_URL` from `.env.example`,
+deploy the revised AidTrace program to localnet or Devnet, and initialize its
+config account with the intended admin wallet. Run `npm run index:organizations`
+after on-chain changes (or schedule it periodically); it creates the two
+organization index tables and upserts canonical account state by observed slot.
+The app's `/org` page reads status from Solana and profile metadata from the
+index. Profile JSON must contain `name` and `description`, be published at an
+`https://ipfs.io/ipfs/<CID>` URL, and match the SHA-256 digest signed during
+registration. A new organization starts pending and unverified. The config
+admin verifies it, then activates it. Metadata edits and accepted authority
+transfers revoke approval and require admin review again.

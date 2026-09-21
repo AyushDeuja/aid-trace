@@ -12,9 +12,59 @@ pub struct ConfigInitialized {
 #[event]
 pub struct OrganizationRegistered {
     pub organization: Pubkey,
+    pub founder: Pubkey,
     pub authority: Pubkey,
     pub metadata_digest: [u8; 32],
     pub occurred_at: i64,
+}
+
+#[event]
+pub struct OrganizationMetadataUpdated {
+    pub organization: Pubkey,
+    pub actor: Pubkey,
+    pub metadata_digest: [u8; 32],
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct OrganizationAuthorityNominated {
+    pub organization: Pubkey,
+    pub authority: Pubkey,
+    pub pending_authority: Pubkey,
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct OrganizationAuthorityTransferred {
+    pub organization: Pubkey,
+    pub previous_authority: Pubkey,
+    pub authority: Pubkey,
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct OrganizationVerificationChanged {
+    pub organization: Pubkey,
+    pub actor: Pubkey,
+    pub verified: bool,
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct OrganizationStatusChanged {
+    pub organization: Pubkey,
+    pub actor: Pubkey,
+    pub previous_status: OrganizationStatusEvent,
+    pub next_status: OrganizationStatusEvent,
+    pub occurred_at: i64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OrganizationStatusEvent {
+    Pending,
+    Active,
+    Suspended,
+    Closed,
 }
 
 #[event]

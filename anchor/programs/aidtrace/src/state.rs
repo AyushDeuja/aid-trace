@@ -16,16 +16,19 @@ impl GlobalConfig {
 
 #[account]
 pub struct Organization {
+    pub founder: Pubkey,
     pub authority: Pubkey,
+    pub pending_authority: Option<Pubkey>,
     pub metadata_digest: [u8; 32],
     pub status: OrganizationStatus,
+    pub verified: bool,
     pub verified_delivery_count: u64,
     pub next_campaign_id: u64,
     pub bump: u8,
 }
 
 impl Organization {
-    pub const SPACE: usize = 8 + 32 + 32 + 1 + 8 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 33 + 32 + 1 + 1 + 8 + 8 + 1;
 }
 
 #[account]
@@ -147,6 +150,7 @@ impl FundingCounter {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OrganizationStatus {
+    Pending,
     Active,
     Suspended,
     Closed,
