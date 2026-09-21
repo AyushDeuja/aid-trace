@@ -10,6 +10,10 @@ pub enum AidTraceError {
     ProtocolPaused,
     #[msg("The organization is not active")]
     OrganizationNotActive,
+    #[msg("The organization is not verified")]
+    OrganizationNotVerified,
+    #[msg("The proposed organization authority is invalid")]
+    InvalidAuthorityTransfer,
     #[msg("The requested state transition is invalid")]
     InvalidStatusTransition,
     #[msg("A required SHA-256 digest cannot be all zeroes")]

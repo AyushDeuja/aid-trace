@@ -49,9 +49,83 @@ pub mod aidtrace {
 
         emit!(OrganizationRegistered {
             organization: ctx.accounts.organization.key(),
+            founder: ctx.accounts.authority.key(),
             authority: ctx.accounts.authority.key(),
             metadata_digest,
             occurred_at: now,
+        });
+        Ok(())
+    }
+
+    pub fn update_organization_metadata(
+        ctx: Context<ManageOrganization>,
+        metadata_digest: [u8; 32],
+    ) -> Result<()> {
+        validate_digest(&metadata_digest)?;
+        require!(ctx.accounts.organization.status != OrganizationStatus::Closed, AidTraceError::InvalidStatusTransition);
+        require!(ctx.accounts.organization.metadata_digest != metadata_digest, AidTraceError::InvalidInput);
+        ctx.accounts.organization.metadata_digest = metadata_digest;
+        invalidate_approval(&mut ctx.accounts.organization, ctx.accounts.authority.key())?;
+        emit!(OrganizationMetadataUpdated {
+            organization: ctx.accounts.organization.key(), actor: ctx.accounts.authority.key(),
+            metadata_digest, occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn nominate_organization_authority(
+        ctx: Context<ManageOrganization>, pending_authority: Pubkey,
+    ) -> Result<()> {
+        require!(ctx.accounts.organization.status != OrganizationStatus::Closed, AidTraceError::InvalidStatusTransition);
+        nominate_authority(&mut ctx.accounts.organization, pending_authority)?;
+        emit!(OrganizationAuthorityNominated {
+            organization: ctx.accounts.organization.key(), authority: ctx.accounts.authority.key(),
+            pending_authority, occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn accept_organization_authority(ctx: Context<AcceptOrganizationAuthority>) -> Result<()> {
+        let organization = &mut ctx.accounts.organization;
+        require!(organization.status != OrganizationStatus::Closed, AidTraceError::InvalidStatusTransition);
+        let previous_authority = accept_authority(organization, ctx.accounts.new_authority.key())?;
+        invalidate_approval(organization, ctx.accounts.new_authority.key())?;
+        emit!(OrganizationAuthorityTransferred {
+            organization: organization.key(), previous_authority,
+            authority: organization.authority, occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn set_organization_verified(ctx: Context<AdminOrganization>, verified: bool) -> Result<()> {
+        let organization = &mut ctx.accounts.organization;
+        require!(organization.status != OrganizationStatus::Closed, AidTraceError::InvalidStatusTransition);
+        apply_verification(organization, verified)?;
+        if !verified && organization.status == OrganizationStatus::Active {
+            organization.status = OrganizationStatus::Suspended;
+            emit!(OrganizationStatusChanged {
+                organization: organization.key(), actor: ctx.accounts.admin.key(),
+                previous_status: OrganizationStatusEvent::Active,
+                next_status: OrganizationStatusEvent::Suspended,
+                occurred_at: Clock::get()?.unix_timestamp,
+            });
+        }
+        emit!(OrganizationVerificationChanged {
+            organization: organization.key(), actor: ctx.accounts.admin.key(),
+            verified, occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn set_organization_status(ctx: Context<AdminOrganization>, next_status: OrganizationStatus) -> Result<()> {
+        let organization = &mut ctx.accounts.organization;
+        let previous_status = organization.status;
+        apply_status_change(organization, next_status)?;
+        emit!(OrganizationStatusChanged {
+            organization: organization.key(), actor: ctx.accounts.admin.key(),
+            previous_status: organization_status_event(previous_status),
+            next_status: organization_status_event(next_status),
+            occurred_at: Clock::get()?.unix_timestamp,
         });
         Ok(())
     }
@@ -65,7 +139,7 @@ pub mod aidtrace {
     ) -> Result<()> {
         require!(!ctx.accounts.config.paused, AidTraceError::ProtocolPaused);
         require!(
-            ctx.accounts.organization.status == OrganizationStatus::Active,
+            ctx.accounts.organization.status == OrganizationStatus::Active && ctx.accounts.organization.verified,
             AidTraceError::OrganizationNotActive
         );
         require_authority(
@@ -146,13 +220,36 @@ pub struct RegisterOrganization<'info> {
 }
 
 #[derive(Accounts)]
+pub struct ManageOrganization<'info> {
+    #[account(mut, seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump, has_one = authority @ AidTraceError::Unauthorized)]
+    pub organization: Account<'info, Organization>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptOrganizationAuthority<'info> {
+    #[account(mut, seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Account<'info, Organization>,
+    pub new_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AdminOrganization<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Account<'info, Organization>,
+    pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
 #[instruction(campaign_id: u64)]
 pub struct CreateCampaign<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, GlobalConfig>,
     #[account(
         mut,
-        seeds = [ORGANIZATION_SEED, authority.key().as_ref()],
+        seeds = [ORGANIZATION_SEED, organization.founder.as_ref()],
         bump = organization.bump,
         has_one = authority @ AidTraceError::Unauthorized
     )]
@@ -185,12 +282,71 @@ fn initialize_organization(
     metadata_digest: [u8; 32],
     bump: u8,
 ) {
+    organization.founder = authority;
     organization.authority = authority;
+    organization.pending_authority = None;
     organization.metadata_digest = metadata_digest;
-    organization.status = OrganizationStatus::Active;
+    organization.status = OrganizationStatus::Pending;
+    organization.verified = false;
     organization.verified_delivery_count = 0;
     organization.next_campaign_id = 0;
     organization.bump = bump;
+}
+
+fn organization_status_event(status: OrganizationStatus) -> OrganizationStatusEvent {
+    match status {
+        OrganizationStatus::Pending => OrganizationStatusEvent::Pending,
+        OrganizationStatus::Active => OrganizationStatusEvent::Active,
+        OrganizationStatus::Suspended => OrganizationStatusEvent::Suspended,
+        OrganizationStatus::Closed => OrganizationStatusEvent::Closed,
+    }
+}
+
+fn nominate_authority(organization: &mut Organization, next: Pubkey) -> Result<()> {
+    require!(next != Pubkey::default() && next != organization.authority && organization.pending_authority != Some(next), AidTraceError::InvalidAuthorityTransfer);
+    organization.pending_authority = Some(next);
+    Ok(())
+}
+
+fn accept_authority(organization: &mut Organization, next: Pubkey) -> Result<Pubkey> {
+    require!(organization.pending_authority == Some(next), AidTraceError::InvalidAuthorityTransfer);
+    let previous = organization.authority;
+    organization.authority = next;
+    organization.pending_authority = None;
+    Ok(previous)
+}
+
+fn apply_verification(organization: &mut Organization, verified: bool) -> Result<()> {
+    require!(organization.verified != verified, AidTraceError::InvalidStatusTransition);
+    organization.verified = verified;
+    Ok(())
+}
+
+fn apply_status_change(organization: &mut Organization, next: OrganizationStatus) -> Result<()> {
+    require!(organization.status != OrganizationStatus::Closed && organization.status != next && next != OrganizationStatus::Pending, AidTraceError::InvalidStatusTransition);
+    if next == OrganizationStatus::Active { require!(organization.verified, AidTraceError::OrganizationNotVerified); }
+    organization.status = next;
+    if next == OrganizationStatus::Closed { organization.pending_authority = None; }
+    Ok(())
+}
+
+fn invalidate_approval(organization: &mut Account<Organization>, actor: Pubkey) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    if organization.verified {
+        organization.verified = false;
+        emit!(OrganizationVerificationChanged {
+            organization: organization.key(), actor, verified: false, occurred_at: now,
+        });
+    }
+    if organization.status == OrganizationStatus::Active {
+        organization.status = OrganizationStatus::Suspended;
+        emit!(OrganizationStatusChanged {
+            organization: organization.key(), actor,
+            previous_status: OrganizationStatusEvent::Active,
+            next_status: OrganizationStatusEvent::Suspended, occurred_at: now,
+        });
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -269,9 +425,12 @@ mod tests {
             bump: 0,
         };
         let mut organization = Organization {
+            founder: Pubkey::default(),
             authority: Pubkey::default(),
+            pending_authority: None,
             metadata_digest: [0; 32],
             status: OrganizationStatus::Suspended,
+            verified: true,
             verified_delivery_count: 99,
             next_campaign_id: 99,
             bump: 0,
@@ -308,7 +467,8 @@ mod tests {
         assert_eq!(config.admin, authority);
         assert_eq!(config.treasury_authority, authority);
         assert!(!config.paused);
-        assert_eq!(organization.status, OrganizationStatus::Active);
+        assert_eq!(organization.status, OrganizationStatus::Pending);
+        assert!(!organization.verified);
         assert_eq!(organization.next_campaign_id, 0);
         assert_eq!(campaign.status, CampaignStatus::Draft);
         assert_eq!(campaign.amount_raised, 0);
@@ -326,7 +486,7 @@ mod tests {
     #[test]
     fn account_spaces_include_discriminators() {
         assert_eq!(GlobalConfig::SPACE, 77);
-        assert_eq!(Organization::SPACE, 90);
+        assert_eq!(Organization::SPACE, 156);
         assert_eq!(Campaign::SPACE, 163);
         assert_eq!(Allocation::SPACE, 146);
         assert_eq!(Disbursement::SPACE, 202);
@@ -334,5 +494,30 @@ mod tests {
         assert_eq!(TrustScore::SPACE, 92);
         assert_eq!(FraudFlag::SPACE, 84);
         assert_eq!(FundingCounter::SPACE, 73);
+    }
+
+    #[test]
+    fn organization_approval_and_transfer_rules() {
+        let founder = Pubkey::new_unique();
+        let next = Pubkey::new_unique();
+        let mut organization = Organization {
+            founder, authority: founder, pending_authority: None,
+            metadata_digest: digest(), status: OrganizationStatus::Pending,
+            verified: false, verified_delivery_count: 0, next_campaign_id: 0, bump: 1,
+        };
+        assert!(apply_status_change(&mut organization, OrganizationStatus::Active).is_err());
+        assert!(apply_status_change(&mut organization, OrganizationStatus::Pending).is_err());
+        assert!(apply_verification(&mut organization, true).is_ok());
+        assert!(apply_verification(&mut organization, true).is_err());
+        assert!(apply_status_change(&mut organization, OrganizationStatus::Active).is_ok());
+        assert!(nominate_authority(&mut organization, founder).is_err());
+        assert!(nominate_authority(&mut organization, next).is_ok());
+        assert!(accept_authority(&mut organization, founder).is_err());
+        assert_eq!(accept_authority(&mut organization, next).unwrap(), founder);
+        assert_eq!(organization.founder, founder);
+        assert_eq!(organization.authority, next);
+        assert_eq!(organization.pending_authority, None);
+        assert!(apply_status_change(&mut organization, OrganizationStatus::Closed).is_ok());
+        assert!(apply_status_change(&mut organization, OrganizationStatus::Active).is_err());
     }
 }

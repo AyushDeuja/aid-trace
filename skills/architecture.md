@@ -249,17 +249,17 @@ All PDAs are owned by the AidTrace program and sizes below include Anchor's
 8-byte discriminator. Digest fields are fixed `[u8; 32]` SHA-256 values; URLs,
 CIDs, and mutable text belong in the off-chain projection/evidence layer.
 
-| Account                | PDA seeds                                                     | Size | Authority / allowed writer                                                          | Lifecycle in this task         |
-| ---------------------- | ------------------------------------------------------------- | ---: | ----------------------------------------------------------------------------------- | ------------------------------ |
-| `GlobalConfig`         | `['config']`                                                  |   77 | One-time deployer initialization; recorded admin controls future privileged changes | Initialized                    |
-| `Organization`         | `['org', authority]`                                          |   90 | Organization authority                                                              | Initialized                    |
-| `Campaign`             | `['campaign', organization, campaign_id_le]`                  |  163 | Matching organization authority                                                     | Initialized as `Draft`         |
-| `Allocation`           | `['allocation', campaign, allocation_id_le]`                  |  146 | Future campaign authority flow                                                      | Defined only                   |
-| `Disbursement`         | `['disbursement', allocation, disbursement_id_le]`            |  202 | Future authorized allocation flow                                                   | Defined only                   |
-| `DeliveryVerification` | `['delivery_verification', disbursement, verification_id_le]` |  123 | Future registered verifier flow                                                     | Defined only                   |
-| `TrustScore`           | `['trust', subject]`                                          |   92 | Future constrained trust updater                                                    | Defined only; no ER delegation |
-| `FraudFlag`            | `['fraud_flag', subject]`                                     |   84 | Future human/settlement resolution flow                                             | Defined only                   |
-| `FundingCounter`       | `['funding_counter', campaign]`                               |   73 | Future confirmed-event relayer flow                                                 | Defined only; never custody    |
+| Account                | PDA seeds                                                     | Size | Authority / allowed writer                                                            | Lifecycle in this task         |
+| ---------------------- | ------------------------------------------------------------- | ---: | ------------------------------------------------------------------------------------- | ------------------------------ |
+| `GlobalConfig`         | `['config']`                                                  |   77 | One-time deployer initialization; recorded admin controls future privileged changes   | Initialized                    |
+| `Organization`         | `['org', founder]`                                            |  156 | Current organization authority edits metadata/transfers; config admin verifies/status | Pending on registration        |
+| `Campaign`             | `['campaign', organization, campaign_id_le]`                  |  163 | Matching organization authority                                                       | Initialized as `Draft`         |
+| `Allocation`           | `['allocation', campaign, allocation_id_le]`                  |  146 | Future campaign authority flow                                                        | Defined only                   |
+| `Disbursement`         | `['disbursement', allocation, disbursement_id_le]`            |  202 | Future authorized allocation flow                                                     | Defined only                   |
+| `DeliveryVerification` | `['delivery_verification', disbursement, verification_id_le]` |  123 | Future registered verifier flow                                                       | Defined only                   |
+| `TrustScore`           | `['trust', subject]`                                          |   92 | Future constrained trust updater                                                      | Defined only; no ER delegation |
+| `FraudFlag`            | `['fraud_flag', subject]`                                     |   84 | Future human/settlement resolution flow                                               | Defined only                   |
+| `FundingCounter`       | `['funding_counter', campaign]`                               |   73 | Future confirmed-event relayer flow                                                   | Defined only; never custody    |
 
 `Organization.next_campaign_id`, `Campaign.next_allocation_id`,
 `Allocation.next_disbursement_id`, and
@@ -271,6 +271,17 @@ counter with checked arithmetic.
 `initialize_config` records its signer as both initial `admin` and
 `treasury_authority`. Deployment operations must submit it immediately after
 program deployment; no arbitrary caller can reinitialize the config PDA.
+
+Organization `founder` is immutable and remains the PDA seed after a two-step
+authority transfer. The organization stores `authority`, optional
+`pending_authority`, a SHA-256 metadata digest, independent `verified` and
+`Pending|Active|Suspended|Closed` status fields, counters, and bump. A wallet
+may register once; the config admin verifies and activates it. Metadata changes
+and accepted authority transfers revoke verification and suspend an active
+organization until the admin reviews it again. `Closed` is terminal.
+Organization profile JSON lives at an IPFS content URL in the Postgres index;
+the program stores only its digest. The read API checks the JSON bytes against
+the canonical digest and fetches status directly from Solana.
 
 ### 5.2 Program instruction surface
 

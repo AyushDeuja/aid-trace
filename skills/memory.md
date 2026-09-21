@@ -354,4 +354,11 @@ When a durable decision changes:
 - One organization is derived per authority with `['org', authority]`.
 - Nested historical records use parent-scoped `u64` counters; callers must match the canonical next counter.
 - `GlobalConfig` is one-time initialized by the deployer, who becomes initial admin and treasury authority.
-- Organizations initialize active; campaigns initialize as `Draft`; no funds, delegation, or AI authority exists in this foundation.
+- The foundation originally initialized organizations active; campaigns initialize as `Draft`; no funds, delegation, or AI authority exists in this foundation.
+
+### v1.3 — organization approval and authority
+
+- Organizations now initialize `Pending` and unverified; the config admin alone verifies and activates them.
+- Organization PDA seeds retain the original founder after authority transfer. Current authority governs metadata and campaigns.
+- Metadata and authority changes revoke verification and suspend active organizations until admin review.
+- Profile JSON is stored at an IPFS content URL in the Postgres index and checked against the canonical SHA-256 digest before display.
