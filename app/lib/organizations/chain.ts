@@ -10,7 +10,7 @@ import {
 import { getClusterUrl, type ClusterMoniker } from "../solana-client";
 
 export const PROGRAM_ID = address(
-  "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn"
+  "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M"
 );
 const SYSTEM_ID = address("11111111111111111111111111111111");
 const encoder = getAddressEncoder();

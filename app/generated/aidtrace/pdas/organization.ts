@@ -23,7 +23,7 @@ export async function findOrganizationPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn" as Address<"5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn">,
+    programAddress = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

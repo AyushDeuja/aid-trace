@@ -44,7 +44,7 @@ import {
 } from "../instructions";
 
 export const AIDTRACE_PROGRAM_ADDRESS =
-  "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn" as Address<"5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn">;
+  "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
 
 export enum AidtraceAccount {
   Campaign,
@@ -275,7 +275,7 @@ export function identifyAidtraceInstruction(
 }
 
 export type ParsedAidtraceInstruction<
-  TProgram extends string = "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn",
+  TProgram extends string = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M",
 > =
   | ({
       instructionType: AidtraceInstruction.AcceptOrganizationAuthority;
