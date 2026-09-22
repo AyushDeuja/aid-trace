@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { address as parseAddress } from "@solana/kit";
-import { database } from "../../../lib/organizations/db";
+import {
+  database,
+  ensureOrganizationSchema,
+} from "../../../lib/organizations/db";
 import { fetchOrganization } from "../../../lib/organizations/chain";
 import { fetchVerifiedMetadata } from "../../../lib/organizations/metadata";
 
@@ -19,6 +22,7 @@ export async function GET(request: NextRequest, context: Context) {
         { error: "Organization not found" },
         { status: 404 }
       );
+    await ensureOrganizationSchema();
     const row = await database().query(
       "SELECT metadata_uri FROM organization_projection WHERE address = $1",
       [key]
@@ -63,6 +67,7 @@ export async function POST(request: NextRequest, context: Context) {
         { status: 404 }
       );
     await fetchVerifiedMetadata(uri, canonical.metadataDigest);
+    await ensureOrganizationSchema();
     await database().query(
       `INSERT INTO organization_projection
        (address, founder, authority, pending_authority, metadata_digest, metadata_uri, status, verified, verified_delivery_count, next_campaign_id, observed_slot)

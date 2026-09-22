@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { address } from "@solana/kit";
-import { database } from "../../lib/organizations/db";
+import {
+  database,
+  ensureOrganizationSchema,
+} from "../../lib/organizations/db";
 import { fetchOrganization } from "../../lib/organizations/chain";
 import { fetchVerifiedMetadata } from "../../lib/organizations/metadata";
 
@@ -11,6 +14,7 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("cluster") === "localnet"
         ? "localnet"
         : "devnet";
+    await ensureOrganizationSchema();
     const rows = await database().query(
       "SELECT address, metadata_uri FROM organization_projection ORDER BY updated_at DESC LIMIT 100"
     );
