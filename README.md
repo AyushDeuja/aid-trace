@@ -28,6 +28,21 @@ npm run lint
 npm run build
 ```
 
+### Windows and WSL dependencies
+
+`node_modules` contains native binaries selected for the operating system that
+ran `npm install`. If you switch between PowerShell and WSL in the same checkout,
+reinstall dependencies from that environment before running tests or builds:
+
+```bash
+npm ci
+npm test
+```
+
+For regular use of both environments, keep separate checkouts so each has its
+own `node_modules`. The lockfile is shared; the installed native binaries are
+not.
+
 `npm run toolchain` currently reports missing prerequisites until the Solana CLI
 and Anchor CLI are installed. It is an intentional guard, not a passing check.
 Anchor program generation/build/test commands become usable after task 01 has

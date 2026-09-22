@@ -249,7 +249,7 @@ pub mod aidtrace {
         require!(donation_id == ctx.accounts.campaign.next_donation_id, AidTraceError::InvalidSequence);
         let total = ctx.accounts.campaign.amount_raised.checked_add(amount).ok_or(AidTraceError::ArithmeticOverflow)?;
         let next = donation_id.checked_add(1).ok_or(AidTraceError::CounterExhausted)?;
-        anchor_lang::system_program::transfer(CpiContext::new(ctx.accounts.system_program.to_account_info(), anchor_lang::system_program::Transfer { from: ctx.accounts.donor.to_account_info(), to: ctx.accounts.vault.to_account_info() }), amount)?;
+        anchor_lang::system_program::transfer(CpiContext::new(ctx.accounts.system_program.key(), anchor_lang::system_program::Transfer { from: ctx.accounts.donor.to_account_info(), to: ctx.accounts.vault.to_account_info() }), amount)?;
         let donation = &mut ctx.accounts.donation;
         donation.campaign = ctx.accounts.campaign.key();
         donation.donor = ctx.accounts.donor.key();
