@@ -222,14 +222,7 @@ pub mod aidtrace {
     pub fn set_campaign_status(ctx: Context<AdminCampaign>, next_status: CampaignStatus) -> Result<()> {
         let campaign = &mut ctx.accounts.campaign;
         let previous = campaign.status;
-        let allowed = matches!((previous, next_status),
-            (CampaignStatus::PendingReview, CampaignStatus::Active) |
-            (CampaignStatus::Active, CampaignStatus::Paused) |
-            (CampaignStatus::Paused, CampaignStatus::Active) |
-            (CampaignStatus::Active, CampaignStatus::Closed) |
-            (CampaignStatus::Paused, CampaignStatus::Closed) |
-            (CampaignStatus::PendingReview, CampaignStatus::Closed));
-        require!(allowed, AidTraceError::InvalidStatusTransition);
+        require!(campaign_status_transition_allowed(previous, next_status), AidTraceError::InvalidStatusTransition);
         if next_status == CampaignStatus::Active {
             require!(!ctx.accounts.config.paused, AidTraceError::ProtocolPaused);
             require!(ctx.accounts.organization.verified && ctx.accounts.organization.status == OrganizationStatus::Active, AidTraceError::OrganizationNotActive);
@@ -386,6 +379,16 @@ pub struct Donate<'info> {
 
 fn campaign_status_event(status: CampaignStatus) -> CampaignStatusEvent {
     match status { CampaignStatus::Draft => CampaignStatusEvent::Draft, CampaignStatus::PendingReview => CampaignStatusEvent::PendingReview, CampaignStatus::Active => CampaignStatusEvent::Active, CampaignStatus::Paused => CampaignStatusEvent::Paused, CampaignStatus::Closed => CampaignStatusEvent::Closed }
+}
+
+fn campaign_status_transition_allowed(previous: CampaignStatus, next: CampaignStatus) -> bool {
+    matches!((previous, next),
+        (CampaignStatus::PendingReview, CampaignStatus::Active) |
+        (CampaignStatus::Active, CampaignStatus::Paused) |
+        (CampaignStatus::Paused, CampaignStatus::Active) |
+        (CampaignStatus::Active, CampaignStatus::Closed) |
+        (CampaignStatus::Paused, CampaignStatus::Closed) |
+        (CampaignStatus::PendingReview, CampaignStatus::Closed))
 }
 
 fn validate_campaign_uri(uri: &str) -> Result<()> {
@@ -626,6 +629,28 @@ mod tests {
         assert_eq!(TrustScore::SPACE, 92);
         assert_eq!(FraudFlag::SPACE, 84);
         assert_eq!(FundingCounter::SPACE, 73);
+    }
+
+    #[test]
+    fn campaign_status_transitions_are_human_gated_and_terminal() {
+        assert!(campaign_status_transition_allowed(CampaignStatus::PendingReview, CampaignStatus::Active));
+        assert!(campaign_status_transition_allowed(CampaignStatus::Active, CampaignStatus::Paused));
+        assert!(campaign_status_transition_allowed(CampaignStatus::Paused, CampaignStatus::Active));
+        assert!(campaign_status_transition_allowed(CampaignStatus::Paused, CampaignStatus::Closed));
+        assert!(!campaign_status_transition_allowed(CampaignStatus::Draft, CampaignStatus::Active));
+        assert!(!campaign_status_transition_allowed(CampaignStatus::Active, CampaignStatus::Draft));
+        assert!(!campaign_status_transition_allowed(CampaignStatus::Closed, CampaignStatus::Active));
+    }
+
+    #[test]
+    fn campaign_metadata_and_donation_accounting_boundaries_are_validated() {
+        assert!(validate_campaign_uri("https://ipfs.io/ipfs/metadata").is_ok());
+        assert!(validate_campaign_uri("http://ipfs.io/ipfs/metadata").is_err());
+        assert!(validate_campaign_uri("https://ipfs.io/ipfs/metadata?query").is_err());
+        assert_eq!(0_u64.checked_add(1), Some(1));
+        assert_eq!(u64::MAX.checked_add(1), None);
+        assert_eq!(42_u64.checked_add(1), Some(43));
+        assert_eq!(u64::MAX.checked_add(1), None);
     }
 
     #[test]

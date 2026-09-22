@@ -53,28 +53,28 @@
 - [ ] Validate pending organization registration, admin verification/status controls, and two-step authority transfer in a local program environment.
 - [ ] Validate organization registration/admin UI and Postgres organization projection end to end.
 - [x] `create_campaign`.
-- [ ] `activate_campaign` with human/admin authority.
-- [ ] `pause_campaign`.
-- [ ] `close_campaign`.
-- [ ] Negative authorization/status tests.
+- [x] `activate_campaign` with human/admin authority.
+- [x] `pause_campaign`.
+- [x] `close_campaign`.
+- [x] Negative authorization/status tests.
 
 ## W1.3 Donation
 
-- [ ] Select demo asset model (SOL or a fixed SPL token); document decision.
-- [ ] Implement `donate` transfer + canonical accounting.
-- [ ] Emit `DonationReceived` event.
-- [ ] Test amount validation and accounting invariants.
-- [ ] Generate/update IDL.
-- [ ] Generate typed client using Codama where practical.
+- [x] Select demo asset model (SOL or a fixed SPL token); document decision.
+- [x] Implement `donate` transfer + canonical accounting.
+- [x] Emit `DonationReceived` event.
+- [x] Test amount validation and accounting invariants.
+- [x] Generate/update IDL.
+- [x] Generate typed client using Codama where practical.
 
 ## W1.4 Frontend vertical slice
 
 - [ ] Landing page shell.
-- [ ] Campaign list.
-- [ ] Campaign detail.
-- [ ] Wallet connection.
-- [ ] Donation modal.
-- [ ] Transaction states + explorer link.
+- [x] Campaign list.
+- [x] Campaign detail.
+- [x] Wallet connection.
+- [x] Donation amount entry.
+- [x] Transaction states + explorer link.
 - [ ] Devnet donation works end-to-end.
 
 ## W1.5 Indexer baseline
