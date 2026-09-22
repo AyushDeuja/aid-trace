@@ -6,15 +6,17 @@ solana_version = "3.1.10"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-aidtrace = "GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf"
-
 [programs.devnet]
-aidtrace = "GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf"
+aidtrace = "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn"
+
+[programs.localnet]
+aidtrace = "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "cargo test"
+
+[hooks]

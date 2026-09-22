@@ -10,7 +10,7 @@ use errors::AidTraceError;
 use events::*;
 use state::*;
 
-declare_id!("GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf");
+declare_id!("5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn");
 
 #[program]
 pub mod aidtrace {

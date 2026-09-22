@@ -349,7 +349,7 @@ When a durable decision changes:
 ### v1.2 â€” canonical program foundation
 
 - Project skill sources are locked in `skills-lock.json`: `solana-foundation/solana-dev-skill` hash `1ec05821927683f89db3a394cd6a5f7fe324abe3bced90676749a9f6dfb9ce67`; `magicblock-labs/magicblock-dev-skill` hash `1da12d71e2f42e5b8f78fdc474988ec5edd18820281af632c82eca881c32fcd2`.
-- Program ID: `GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf`.
+- Program ID: `5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn`.
 - Account metadata/evidence references are fixed `[u8; 32]` SHA-256 digests.
 - One organization is derived per authority with `['org', authority]`.
 - Nested historical records use parent-scoped `u64` counters; callers must match the canonical next counter.

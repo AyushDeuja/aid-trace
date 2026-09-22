@@ -2,7 +2,7 @@ import pg from "pg";
 import { createHash } from "node:crypto";
 import { getAddressDecoder } from "@solana/kit";
 
-const program = "GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf";
+const program = "5Z7gLMeuA9xqwRQNmuZeZCgUYCSVPtAhqhnvid7V6PXn";
 const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
