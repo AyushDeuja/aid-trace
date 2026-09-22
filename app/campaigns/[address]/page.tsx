@@ -7,7 +7,11 @@ import { useCluster } from "../../components/cluster-context";
 import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
-import { fetchAdmin, fetchOrganization, rpcCall } from "../../lib/organizations/chain";
+import {
+  fetchAdmin,
+  fetchOrganization,
+  rpcCall,
+} from "../../lib/organizations/chain";
 import {
   donateIx,
   fetchCampaign,
@@ -28,7 +32,9 @@ export default function CampaignDetailPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [admin, setAdmin] = useState<string | null>(null);
-  const [organizationAuthority, setOrganizationAuthority] = useState<string | null>(null);
+  const [organizationAuthority, setOrganizationAuthority] = useState<
+    string | null
+  >(null);
   const [amount, setAmount] = useState("");
   const [goal, setGoal] = useState("");
   const [uri, setUri] = useState("");
@@ -42,7 +48,9 @@ export default function CampaignDetailPage() {
       setCampaign(c);
       setAdmin(await fetchAdmin(cluster));
       if (c) {
-        setOrganizationAuthority((await fetchOrganization(cluster, c.organization))?.authority || null);
+        setOrganizationAuthority(
+          (await fetchOrganization(cluster, c.organization))?.authority || null
+        );
         setGoal(displaySol(c.targetAmount));
         setUri(c.metadataUri);
         const response = await fetch(
