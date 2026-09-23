@@ -72,9 +72,8 @@ config account with the intended admin wallet. Run `npm run index:organizations`
 after on-chain changes (or schedule it periodically); it creates the two
 organization index tables and upserts canonical account state by observed slot.
 The app's `/org` page reads status from Solana and profile metadata from the
-index. Profile JSON must contain `name` and `description`, be published at an
-`https://ipfs.io/ipfs/<CID>` URL, and match the SHA-256 digest signed during
-registration. A new organization starts pending and unverified. The config
+index. Profiles are stored as immutable PostgreSQL documents and must match the
+SHA-256 digest signed during registration. A new organization starts pending and unverified. The config
 admin verifies it, then activates it. Metadata edits and accepted authority
 transfers revoke approval and require admin review again.
 
@@ -82,18 +81,19 @@ transfers revoke approval and require admin review again.
 
 The campaign flow uses native Devnet SOL. Each campaign has a program-owned
 vault PDA and each donation has a durable donation PDA. The campaign account's
-`amount_raised` is the canonical total. Campaign metadata JSON must contain
-`title`, `description`, `disasterType`, and `location`; publish it at an
-`https://ipfs.io/ipfs/<CID>` URL. The app checks its SHA-256 hash against the
-campaign account before displaying it.
+`amount_raised` is the canonical total. Campaign metadata contains `title`,
+`description`, `disasterType`, and `location`; the app stores immutable
+PostgreSQL documents and checks their SHA-256 hash against the campaign account
+before displaying them. Back up PostgreSQL: Solana proves the metadata hash but
+does not retain the full human-readable document.
 
 1. Install the toolchain in `TOOLCHAIN.md`, then run `npm run anchor-build` and
    `npm run codama:js`. Deploy the resulting AidTrace program to Devnet using
    the program ID in `anchor/Anchor.toml`; initialize the config if needed.
 2. Fund the admin, organization, and donor wallets with Devnet SOL. In `/org`,
    register an organization and have the config admin verify and activate it.
-3. Open `/campaigns` with the organization authority wallet. Enter metadata
-   URL and a goal in SOL, then sign **Create draft**.
+3. Open `/campaigns` with the organization authority wallet. Enter campaign
+   details and a goal in SOL, then sign **Create draft**.
 4. Open the campaign detail, sign **Submit for review**, then connect the
    config admin wallet and activate it.
 5. Connect the donor wallet, enter a SOL amount, and sign **Donate with wallet**.

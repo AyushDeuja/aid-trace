@@ -31,7 +31,7 @@ test("creation and donation use program-owned accounts and donor signer", async 
     1_000_000_000n,
     null,
     "aa".repeat(32),
-    "https://ipfs.io/ipfs/abc"
+    "aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000"
   );
   assert.equal(create.accounts?.[2]?.address, campaign);
   assert.equal(create.accounts?.[3]?.address, await vaultPda(campaign));

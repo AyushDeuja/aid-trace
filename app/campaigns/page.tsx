@@ -28,7 +28,10 @@ export default function CampaignsPage() {
   const [orgs, setOrgs] = useState<
     Awaited<ReturnType<typeof fetchOrganization>>[]
   >([]);
-  const [uri, setUri] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [disasterType, setDisasterType] = useState("");
+  const [location, setLocation] = useState("");
   const [goal, setGoal] = useState("");
   const [org, setOrg] = useState("");
   const [error, setError] = useState("");
@@ -97,10 +100,15 @@ export default function CampaignsPage() {
       const selected = orgs.find((x) => x?.address === org);
       if (!selected || !selected.verified || selected.status !== "Active")
         throw new Error("Choose an active, verified organization");
-      setStage("Checking metadata");
-      const response = await fetch(
-        `/api/campaigns/metadata?uri=${encodeURIComponent(uri)}`
-      );
+      setStage("Saving metadata");
+      const response = await fetch("/api/metadata", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "campaign",
+          metadata: { title, description, disasterType, location },
+        }),
+      });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error);
       const amount = parseSolAmount(goal);
@@ -112,7 +120,7 @@ export default function CampaignsPage() {
         amount,
         null,
         body.digest,
-        uri
+        body.uri
       );
       const tx = await send({ instructions: [ix] });
       setSignature(tx);
@@ -183,8 +191,7 @@ export default function CampaignsPage() {
         <section className="space-y-3 rounded-xl border p-5">
           <h2 className="text-xl font-semibold">Create campaign</h2>
           <p>
-            Publish JSON with title, description, disasterType, and location to
-            IPFS.
+            Enter campaign details. They are saved and hash-verified by AidTrace.
           </p>
           <select
             className="w-full rounded border p-2"
@@ -199,12 +206,10 @@ export default function CampaignsPage() {
                 </option>
               ))}
           </select>
-          <input
-            className="w-full rounded border p-2"
-            placeholder="https://ipfs.io/ipfs/..."
-            value={uri}
-            onChange={(e) => setUri(e.target.value)}
-          />
+          <input className="w-full rounded border p-2" placeholder="Campaign title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <textarea className="w-full rounded border p-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <input className="w-full rounded border p-2" placeholder="Disaster type" value={disasterType} onChange={(e) => setDisasterType(e.target.value)} />
+          <input className="w-full rounded border p-2" placeholder="Location" value={location} onChange={(e) => setLocation(e.target.value)} />
           <input
             className="w-full rounded border p-2"
             placeholder="Goal in SOL"
@@ -213,7 +218,7 @@ export default function CampaignsPage() {
           />
           <button
             className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
-            disabled={isSending || !uri || !goal}
+            disabled={isSending || !title || !description || !disasterType || !location || !goal}
             onClick={() => void create()}
           >
             Create draft

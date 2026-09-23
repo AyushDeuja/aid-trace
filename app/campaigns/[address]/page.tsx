@@ -31,13 +31,14 @@ export default function CampaignDetailPage() {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [disasterType, setDisasterType] = useState("");
+  const [location, setLocation] = useState("");
   const [admin, setAdmin] = useState<string | null>(null);
   const [organizationAuthority, setOrganizationAuthority] = useState<
     string | null
   >(null);
   const [amount, setAmount] = useState("");
   const [goal, setGoal] = useState("");
-  const [uri, setUri] = useState("");
   const [error, setError] = useState("");
   const [stage, setStage] = useState("");
   const [signature, setSignature] = useState("");
@@ -52,7 +53,6 @@ export default function CampaignDetailPage() {
           (await fetchOrganization(cluster, c.organization))?.authority || null
         );
         setGoal(displaySol(c.targetAmount));
-        setUri(c.metadataUri);
         const response = await fetch(
           `/api/campaigns/metadata?uri=${encodeURIComponent(c.metadataUri)}`
         );
@@ -60,6 +60,8 @@ export default function CampaignDetailPage() {
         if (response.ok && data.digest === c.metadataDigest) {
           setTitle(data.metadata.title);
           setDescription(data.metadata.description);
+          setDisasterType(data.metadata.disasterType);
+          setLocation(data.metadata.location);
         } else {
           setTitle("Unverified metadata");
           setDescription("");
@@ -115,9 +117,14 @@ export default function CampaignDetailPage() {
   const update = async () => {
     if (!campaign || !walletAddress) return;
     try {
-      const response = await fetch(
-        `/api/campaigns/metadata?uri=${encodeURIComponent(uri)}`
-      );
+      const response = await fetch("/api/metadata", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "campaign",
+          metadata: { title, description, disasterType, location },
+        }),
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       await transact(
@@ -128,7 +135,7 @@ export default function CampaignDetailPage() {
             parseSolAmount(goal),
             campaign.endsAt,
             data.digest,
-            uri
+            data.uri
           ),
         "Campaign updated"
       );
@@ -259,12 +266,10 @@ export default function CampaignDetailPage() {
           {walletAddress && walletAddress === organizationAuthority && (
             <section className="space-y-3 rounded-xl border p-5">
               <h2 className="text-xl font-semibold">Manage campaign</h2>
-              <input
-                className="w-full rounded border p-2"
-                value={uri}
-                onChange={(e) => setUri(e.target.value)}
-                aria-label="Metadata URI"
-              />
+              <input className="w-full rounded border p-2" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Campaign title" />
+              <textarea className="w-full rounded border p-2" value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Campaign description" />
+              <input className="w-full rounded border p-2" value={disasterType} onChange={(e) => setDisasterType(e.target.value)} aria-label="Disaster type" />
+              <input className="w-full rounded border p-2" value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Location" />
               <input
                 className="w-full rounded border p-2"
                 value={goal}

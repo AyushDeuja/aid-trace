@@ -534,12 +534,19 @@ fn campaign_status_transition_allowed(previous: CampaignStatus, next: CampaignSt
 }
 
 fn validate_campaign_uri(uri: &str) -> Result<()> {
+    let prefix = "aidtrace://campaign/";
+    let id = uri.strip_prefix(prefix).unwrap_or("");
+    let valid_uuid = id.len() == 36
+        && id.chars().enumerate().all(|(index, character)| {
+            if [8, 13, 18, 23].contains(&index) {
+                character == '-'
+            } else {
+                character.is_ascii_hexdigit() && !character.is_ascii_uppercase()
+            }
+        });
     require!(
         uri.len() <= 500
-            && uri.starts_with("https://ipfs.io/ipfs/")
-            && uri.len() > 22
-            && !uri.contains('?')
-            && !uri.contains('#'),
+            && valid_uuid,
         AidTraceError::InvalidInput
     );
     Ok(())
@@ -771,7 +778,7 @@ mod tests {
             1_000,
             Some(100),
             digest(),
-            "https://ipfs.io/ipfs/test".to_string(),
+            "aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000".to_string(),
             10,
             3,
         );
@@ -842,9 +849,9 @@ mod tests {
 
     #[test]
     fn campaign_metadata_and_donation_accounting_boundaries_are_validated() {
-        assert!(validate_campaign_uri("https://ipfs.io/ipfs/metadata").is_ok());
-        assert!(validate_campaign_uri("http://ipfs.io/ipfs/metadata").is_err());
-        assert!(validate_campaign_uri("https://ipfs.io/ipfs/metadata?query").is_err());
+        assert!(validate_campaign_uri("aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000").is_ok());
+        assert!(validate_campaign_uri("aidtrace://organization/550e8400-e29b-41d4-a716-446655440000").is_err());
+        assert!(validate_campaign_uri("aidtrace://campaign/not-a-uuid").is_err());
         assert_eq!(0_u64.checked_add(1), Some(1));
         assert_eq!(u64::MAX.checked_add(1), None);
         assert_eq!(42_u64.checked_add(1), Some(43));

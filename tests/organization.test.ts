@@ -19,6 +19,7 @@ import {
   validateMetadata,
   validateMetadataUri,
 } from "../app/lib/organizations/metadata";
+import { parseMetadataUri } from "../app/lib/metadata-documents";
 
 const founder = address("11111111111111111111111111111111");
 const other = address("SysvarRent111111111111111111111111111111111");
@@ -195,4 +196,14 @@ test("metadata display requires exact JSON bytes matching the canonical hash", a
   } finally {
     globalThis.fetch = previous;
   }
+});
+
+test("AidTrace metadata references are typed and UUID-bound", () => {
+  const uri = "aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000";
+  assert.deepEqual(parseMetadataUri(uri), {
+    kind: "campaign",
+    id: "550e8400-e29b-41d4-a716-446655440000",
+  });
+  assert.throws(() => parseMetadataUri(uri, "organization"), /Invalid/);
+  assert.throws(() => parseMetadataUri("aidtrace://campaign/not-a-uuid"), /Invalid/);
 });

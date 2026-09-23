@@ -33,7 +33,9 @@ export default function OrganizationPage() {
   const [selected, setSelected] = useState<OrganizationAccount | null>(null);
   const [organizations, setOrganizations] = useState<ListedOrganization[]>([]);
   const [admin, setAdmin] = useState<Address | null>(null);
-  const [uri, setUri] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [website, setWebsite] = useState("");
   const [nextAuthority, setNextAuthority] = useState("");
   const [message, setMessage] = useState("");
   const [stage, setStage] = useState("");
@@ -125,17 +127,20 @@ export default function OrganizationPage() {
     }
   };
   const prepareMetadata = async () => {
-    const response = await fetch("/api/organizations/metadata", {
+    const response = await fetch("/api/metadata", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ uri }),
+      body: JSON.stringify({
+        kind: "organization",
+        metadata: { name, description, ...(website ? { website } : {}) },
+      }),
     });
     const body = await response.json();
     if (!response.ok)
       throw new Error(body.error || "Metadata could not be validated");
-    return body.digest as string;
+    return body as { digest: string; uri: string };
   };
-  const saveUri = async (key: Address) => {
+  const saveUri = async (key: Address, uri: string) => {
     const response = await fetch(`/api/organizations/${key}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -195,33 +200,39 @@ export default function OrganizationPage() {
         <section className="space-y-4 rounded-xl border p-5">
           <h2 className="text-xl font-semibold">Register an organization</h2>
           <p className="text-sm text-muted">
-            Publish a JSON profile containing a name and description to IPFS,
-            then paste its ipfs.io content URL. Registration starts in Pending
-            status.
+            Enter a profile below. Registration starts in Pending status.
           </p>
           <label className="block text-sm">
-            Metadata URL
+            Name
             <input
               className="mt-1 w-full rounded border p-2"
-              value={uri}
-              onChange={(e) => setUri(e.target.value)}
-              placeholder="https://ipfs.io/ipfs/..."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
+          </label>
+          <label className="block text-sm">Description
+            <textarea className="mt-1 w-full rounded border p-2" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </label>
+          <label className="block text-sm">Website (optional)
+            <input className="mt-1 w-full rounded border p-2" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://example.org" />
           </label>
           <button
             className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
-            disabled={disabled || !uri}
-            onClick={() =>
+            disabled={disabled || !name || !description}
+            onClick={() => {
+              let metadata: { digest: string; uri: string } | undefined;
               void transact(
+                async () => {
+                  metadata = await prepareMetadata();
+                  return registerOrganizationIx(address(walletAddress), metadata.digest);
+                },
                 async () =>
-                  registerOrganizationIx(
-                    address(walletAddress),
-                    await prepareMetadata()
-                  ),
-                async () =>
-                  saveUri(await organizationPda(address(walletAddress)))
-              )
-            }
+                  saveUri(
+                    await organizationPda(address(walletAddress)),
+                    metadata!.uri
+                  )
+              );
+            }}
           >
             Register with wallet
           </button>
@@ -263,23 +274,32 @@ export default function OrganizationPage() {
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-semibold">Manage profile</h3>
               <label className="block text-sm">
-                New IPFS metadata URL
+                Name
                 <input
                   className="mt-1 w-full rounded border p-2"
-                  value={uri}
-                  onChange={(e) => setUri(e.target.value)}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 />
+              </label>
+              <label className="block text-sm">Description
+                <textarea className="mt-1 w-full rounded border p-2" value={description} onChange={(e) => setDescription(e.target.value)} />
+              </label>
+              <label className="block text-sm">Website (optional)
+                <input className="mt-1 w-full rounded border p-2" value={website} onChange={(e) => setWebsite(e.target.value)} />
               </label>
               <button
                 className="rounded border px-3 py-2 disabled:opacity-50"
-                disabled={disabled || !uri}
-                onClick={() =>
+                disabled={disabled || !name || !description}
+                onClick={() => {
+                  let metadata: { digest: string; uri: string } | undefined;
                   void transact(
-                    async () =>
-                      updateMetadataIx(selected, await prepareMetadata()),
-                    async () => saveUri(selected.address)
-                  )
-                }
+                    async () => {
+                      metadata = await prepareMetadata();
+                      return updateMetadataIx(selected, metadata.digest);
+                    },
+                    async () => saveUri(selected.address, metadata!.uri)
+                  );
+                }}
               >
                 Update metadata
               </button>
