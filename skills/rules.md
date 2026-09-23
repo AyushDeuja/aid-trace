@@ -183,6 +183,9 @@ Every persisted evaluation must include a model/rules version so demo and debugg
 
 - Postgres stores projections, evidence metadata, jobs, model outputs, and external feed data.
 - It is not the canonical source for on-chain balances.
+- Organization and campaign metadata documents are immutable: edits create a new document, canonical JSON representation, and SHA-256 digest.
+- New organization/campaign flows use typed `aidtrace://<kind>/<uuid>` references; do not add user-facing IPFS/CID publishing requirements.
+- Verify a resolved document's digest against its corresponding on-chain account before treating it as linked metadata.
 - Every projection row derived from chain data should retain its source signature/account.
 - Use migrations for schema changes.
 - Prefer immutable evaluation records over in-place mutation; create a new version/evaluation where feasible.

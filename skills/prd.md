@@ -156,7 +156,7 @@ A campaign must contain at minimum:
 - status
 - creation timestamp
 - optional end timestamp
-- evidence/content CID or metadata hash
+- immutable `aidtrace://campaign/<uuid>` metadata reference and SHA-256 digest
 - realtime-counter delegation state
 
 Campaign statuses:
@@ -267,7 +267,7 @@ Every important object should expose:
 - state history where practical
 - actor/authority
 - Solana signature for canonical transactions
-- evidence hash/CID
+- metadata or evidence SHA-256 digest and application-managed reference
 - fraud/detection model version where applicable
 
 ### FR-11 Round-Up Relief

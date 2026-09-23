@@ -65,7 +65,8 @@ flowchart LR
     COMMIT --> SOL
 
     API --> DB
-    API --> STORE[IPFS / Arweave Evidence]
+    API --> META[(PostgreSQL immutable metadata documents)]
+    API --> STORE[App-managed evidence storage]
 ```
 
 ---
@@ -167,7 +168,7 @@ Suggested seeds: `['org', authority]` or `['org', organization_id]`
 Fields:
 
 - authority
-- metadata hash/CID digest
+- metadata SHA-256 digest
 - status
 - aggregate verified-delivery count
 - bump
@@ -279,9 +280,11 @@ authority transfer. The organization stores `authority`, optional
 may register once; the config admin verifies and activates it. Metadata changes
 and accepted authority transfers revoke verification and suspend an active
 organization until the admin reviews it again. `Closed` is terminal.
-Organization profile JSON lives at an IPFS content URL in the Postgres index;
-the program stores only its digest. The read API checks the JSON bytes against
-the canonical digest and fetches status directly from Solana.
+Organization profile JSON is an immutable PostgreSQL metadata document. The
+application stores and resolves its `aidtrace://organization/<uuid>` reference
+in the Postgres projection, while the program stores only the SHA-256 digest.
+The read API verifies the canonical JSON bytes against that digest and fetches
+status directly from Solana. Users never enter or publish an IPFS CID.
 
 ### 5.2 Program instruction surface
 
@@ -539,6 +542,7 @@ Only this human-authenticated route may initiate campaign creation. The detector
 
 Suggested tables:
 
+- `metadata_documents` (immutable canonical JSON, kind, SHA-256 digest, UUID)
 - `organizations`
 - `campaigns_projection`
 - `chain_transactions`
@@ -556,6 +560,8 @@ Suggested tables:
 - `job_runs`
 
 Postgres is a query/projection layer, not the authoritative ledger for money movement.
+It is the source for human-readable metadata documents, so it must be backed up;
+Solana proves which document digest an organization or campaign linked to.
 
 ---
 
@@ -660,8 +666,11 @@ Solana Devnet
 MagicBlock dev/validation environment
   -> delegated TrustScore and FundingCounter accounts
 
-IPFS/Arweave
-  -> evidence files / metadata
+PostgreSQL metadata documents
+  -> immutable organization/campaign JSON and typed aidtrace:// references
+
+App-managed evidence storage
+  -> evidence files; optional server-side decentralized backup later
 ```
 
 Secrets must live in deployment secret stores, never committed `.env` files.
@@ -689,3 +698,11 @@ Accepted for new client code, with compatibility adapters only where dependencie
 ### ADR-005 — Funding counter is derived realtime state
 
 Accepted. It must reconcile to canonical Solana donation data.
+
+### ADR-006 — PostgreSQL-first application metadata
+
+Accepted. New organization and campaign metadata is canonicalized, hashed, and
+inserted immutably into PostgreSQL before its digest is linked on Solana. The
+application uses typed `aidtrace://<kind>/<uuid>` references and verifies the
+digest on reads. Manual IPFS/CID publishing is not part of the product flow;
+legacy IPFS reads are supported only for old records.

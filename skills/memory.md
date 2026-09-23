@@ -123,7 +123,7 @@ Implementation refinement from current Solana development guidance:
 ### Data/infrastructure
 
 - PostgreSQL / Supabase
-- IPFS/Arweave evidence storage
+- immutable PostgreSQL metadata documents; app-managed evidence storage later
 - Vercel frontend
 - Railway/Render AI/indexer
 - Solana Devnet
@@ -361,4 +361,6 @@ When a durable decision changes:
 - Organizations now initialize `Pending` and unverified; the config admin alone verifies and activates them.
 - Organization PDA seeds retain the original founder after authority transfer. Current authority governs metadata and campaigns.
 - Metadata and authority changes revoke verification and suspend active organizations until admin review.
-- Profile JSON is stored at an IPFS content URL in the Postgres index and checked against the canonical SHA-256 digest before display.
+- Profile and campaign metadata are immutable canonical JSON documents in PostgreSQL. The metadata API returns strict `aidtrace://organization/<uuid>` or `aidtrace://campaign/<uuid>` references plus a SHA-256 digest; users do not enter IPFS URLs or CIDs.
+- Solana stores the digest for integrity while the Postgres projection stores the `aidtrace://` URI. Postgres backups are required to retain the human-readable document.
+- Campaign URI validation accepts only canonical lowercase `aidtrace://campaign/<uuid>` references for new campaigns; legacy IPFS reads remain backward-compatible only.
