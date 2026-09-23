@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use crate::state::DonationSource;
 
 #[event]
 pub struct ConfigInitialized {
@@ -88,10 +89,21 @@ pub struct CampaignStatusChanged {
 
 #[event]
 pub struct DonationReceived {
+    pub donation: Pubkey,
     pub campaign: Pubkey,
     pub donor: Pubkey,
     pub amount: u64,
     pub sequence: u64,
+    pub source: DonationSource,
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct CampaignUpdated {
+    pub campaign: Pubkey,
+    pub actor: Pubkey,
+    pub target_amount: u64,
+    pub metadata_digest: [u8; 32],
     pub occurred_at: i64,
 }
 

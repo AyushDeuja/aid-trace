@@ -1,6 +1,8 @@
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const ORGANIZATION_SEED: &[u8] = b"org";
 pub const CAMPAIGN_SEED: &[u8] = b"campaign";
+pub const CAMPAIGN_VAULT_SEED: &[u8] = b"campaign_vault";
+pub const DONATION_SEED: &[u8] = b"donation";
 pub const ALLOCATION_SEED: &[u8] = b"allocation";
 pub const DISBURSEMENT_SEED: &[u8] = b"disbursement";
 pub const DELIVERY_VERIFICATION_SEED: &[u8] = b"delivery_verification";

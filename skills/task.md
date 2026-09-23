@@ -50,32 +50,33 @@
 
 - [x] `initialize_config`.
 - [x] `register_organization`.
+- [x] Create immutable PostgreSQL metadata documents from dashboard fields; link their SHA-256 digest to organization/campaign transactions.
 - [ ] Validate pending organization registration, admin verification/status controls, and two-step authority transfer in a local program environment.
 - [ ] Validate organization registration/admin UI and Postgres organization projection end to end.
 - [x] `create_campaign`.
-- [ ] `activate_campaign` with human/admin authority.
-- [ ] `pause_campaign`.
-- [ ] `close_campaign`.
-- [ ] Negative authorization/status tests.
+- [x] `activate_campaign` with human/admin authority.
+- [x] `pause_campaign`.
+- [x] `close_campaign`.
+- [x] Negative authorization/status tests.
 
 ## W1.3 Donation
 
-- [ ] Select demo asset model (SOL or a fixed SPL token); document decision.
-- [ ] Implement `donate` transfer + canonical accounting.
-- [ ] Emit `DonationReceived` event.
-- [ ] Test amount validation and accounting invariants.
-- [ ] Generate/update IDL.
-- [ ] Generate typed client using Codama where practical.
+- [x] Select demo asset model (SOL or a fixed SPL token); document decision.
+- [x] Implement `donate` transfer + canonical accounting.
+- [x] Emit `DonationReceived` event.
+- [x] Test amount validation and accounting invariants.
+- [x] Generate/update IDL.
+- [x] Generate typed client using Codama where practical.
 
 ## W1.4 Frontend vertical slice
 
 - [ ] Landing page shell.
-- [ ] Campaign list.
-- [ ] Campaign detail.
-- [ ] Wallet connection.
-- [ ] Donation modal.
-- [ ] Transaction states + explorer link.
-- [ ] Devnet donation works end-to-end.
+- [x] Campaign list.
+- [x] Campaign detail.
+- [x] Wallet connection.
+- [x] Donation amount entry.
+- [x] Transaction states + explorer link.
+- [ ] Complete a localnet/Devnet acceptance flow: create and verify organization -> create draft -> submit -> admin activate -> donate -> verify vault, donation PDA, total, and metadata digest.
 
 ## W1.5 Indexer baseline
 
@@ -102,8 +103,8 @@
 ## W2.2 Evidence
 
 - [ ] Evidence upload service abstraction.
-- [ ] IPFS/Arweave provider implementation for demo.
-- [ ] Record CID/hash in audit metadata/on-chain record as designed.
+- [ ] App-managed evidence storage adapter (no user-facing CID or external publishing step).
+- [ ] Create immutable evidence manifests in PostgreSQL and record their SHA-256 hashes/references in the audit model.
 - [ ] Evidence viewer.
 
 ## W2.3 Organization dashboard
@@ -275,7 +276,7 @@
 ## P1 — Strongly desired
 
 - Round-Up Relief
-- evidence storage with IPFS/Arweave
+- app-managed evidence storage with optional server-side decentralized backup
 - rich graph visualization
 - multiple live disaster feeds
 - polished organization trust history

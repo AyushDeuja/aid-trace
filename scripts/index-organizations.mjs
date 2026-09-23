@@ -2,7 +2,7 @@ import pg from "pg";
 import { createHash } from "node:crypto";
 import { getAddressDecoder } from "@solana/kit";
 
-const program = "GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf";
+const program = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M";
 const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -81,7 +81,9 @@ async function syncAccounts() {
     const verifiedDeliveryCountOffset = verifiedOffset + 1;
     const nextCampaignIdOffset = verifiedDeliveryCountOffset + 8;
     if (data[statusOffset] > 3 || data[verifiedOffset] > 1) continue;
-    const status = ["Pending", "Active", "Suspended", "Closed"][data[statusOffset]];
+    const status = ["Pending", "Active", "Suspended", "Closed"][
+      data[statusOffset]
+    ];
     await pool.query(
       `INSERT INTO organization_projection
       (address, founder, authority, pending_authority, metadata_digest, status, verified, verified_delivery_count, next_campaign_id, observed_slot)

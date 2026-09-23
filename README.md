@@ -28,6 +28,21 @@ npm run lint
 npm run build
 ```
 
+### Windows and WSL dependencies
+
+`node_modules` contains native binaries selected for the operating system that
+ran `npm install`. If you switch between PowerShell and WSL in the same checkout,
+reinstall dependencies from that environment before running tests or builds:
+
+```bash
+npm ci
+npm test
+```
+
+For regular use of both environments, keep separate checkouts so each has its
+own `node_modules`. The lockfile is shared; the installed native binaries are
+not.
+
 `npm run toolchain` currently reports missing prerequisites until the Solana CLI
 and Anchor CLI are installed. It is an intentional guard, not a passing check.
 Anchor program generation/build/test commands become usable after task 01 has
@@ -57,8 +72,34 @@ config account with the intended admin wallet. Run `npm run index:organizations`
 after on-chain changes (or schedule it periodically); it creates the two
 organization index tables and upserts canonical account state by observed slot.
 The app's `/org` page reads status from Solana and profile metadata from the
-index. Profile JSON must contain `name` and `description`, be published at an
-`https://ipfs.io/ipfs/<CID>` URL, and match the SHA-256 digest signed during
-registration. A new organization starts pending and unverified. The config
+index. Profiles are stored as immutable PostgreSQL documents and must match the
+SHA-256 digest signed during registration. A new organization starts pending and unverified. The config
 admin verifies it, then activates it. Metadata edits and accepted authority
 transfers revoke approval and require admin review again.
+
+## Campaign donation demo
+
+The campaign flow uses native Devnet SOL. Each campaign has a program-owned
+vault PDA and each donation has a durable donation PDA. The campaign account's
+`amount_raised` is the canonical total. Campaign metadata contains `title`,
+`description`, `disasterType`, and `location`; the app stores immutable
+PostgreSQL documents and checks their SHA-256 hash against the campaign account
+before displaying them. Back up PostgreSQL: Solana proves the metadata hash but
+does not retain the full human-readable document.
+
+1. Install the toolchain in `TOOLCHAIN.md`, then run `npm run anchor-build` and
+   `npm run codama:js`. Deploy the resulting AidTrace program to Devnet using
+   the program ID in `anchor/Anchor.toml`; initialize the config if needed.
+2. Fund the admin, organization, and donor wallets with Devnet SOL. In `/org`,
+   register an organization and have the config admin verify and activate it.
+3. Open `/campaigns` with the organization authority wallet. Enter campaign
+   details and a goal in SOL, then sign **Create draft**.
+4. Open the campaign detail, sign **Submit for review**, then connect the
+   config admin wallet and activate it.
+5. Connect the donor wallet, enter a SOL amount, and sign **Donate with wallet**.
+   Wait for confirmation and open the transaction link. The detail page reads
+   the new raised total directly from Solana. Check the campaign vault and
+   donation PDA in the explorer using the addresses derived by the client.
+
+The current workspace does not contain a deployed updated program or a funded
+wallet. A live Devnet donation requires both before it can be verified.

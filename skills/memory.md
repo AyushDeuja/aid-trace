@@ -123,7 +123,7 @@ Implementation refinement from current Solana development guidance:
 ### Data/infrastructure
 
 - PostgreSQL / Supabase
-- IPFS/Arweave evidence storage
+- immutable PostgreSQL metadata documents; app-managed evidence storage later
 - Vercel frontend
 - Railway/Render AI/indexer
 - Solana Devnet
@@ -349,7 +349,7 @@ When a durable decision changes:
 ### v1.2 â€” canonical program foundation
 
 - Project skill sources are locked in `skills-lock.json`: `solana-foundation/solana-dev-skill` hash `1ec05821927683f89db3a394cd6a5f7fe324abe3bced90676749a9f6dfb9ce67`; `magicblock-labs/magicblock-dev-skill` hash `1da12d71e2f42e5b8f78fdc474988ec5edd18820281af632c82eca881c32fcd2`.
-- Program ID: `GAusyEYaJByQdsB6Z5LZ2irMrkorV8ork9XXkS1WsdRf`.
+- Program ID: `FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M`.
 - Account metadata/evidence references are fixed `[u8; 32]` SHA-256 digests.
 - One organization is derived per authority with `['org', authority]`.
 - Nested historical records use parent-scoped `u64` counters; callers must match the canonical next counter.
@@ -361,4 +361,6 @@ When a durable decision changes:
 - Organizations now initialize `Pending` and unverified; the config admin alone verifies and activates them.
 - Organization PDA seeds retain the original founder after authority transfer. Current authority governs metadata and campaigns.
 - Metadata and authority changes revoke verification and suspend active organizations until admin review.
-- Profile JSON is stored at an IPFS content URL in the Postgres index and checked against the canonical SHA-256 digest before display.
+- Profile and campaign metadata are immutable canonical JSON documents in PostgreSQL. The metadata API returns strict `aidtrace://organization/<uuid>` or `aidtrace://campaign/<uuid>` references plus a SHA-256 digest; users do not enter IPFS URLs or CIDs.
+- Solana stores the digest for integrity while the Postgres projection stores the `aidtrace://` URI. Postgres backups are required to retain the human-readable document.
+- Campaign URI validation accepts only canonical lowercase `aidtrace://campaign/<uuid>` references for new campaigns; legacy IPFS reads remain backward-compatible only.

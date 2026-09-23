@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { lamports as sol } from "@solana/kit";
 import { toast } from "sonner";
 import { useWallet } from "./lib/wallet/context";
@@ -86,6 +87,9 @@ export default function Home() {
             <a href="/org" className="text-sm underline">
               Organizations
             </a>
+            <Link href="/campaigns" className="text-sm underline">
+              Campaigns
+            </Link>
             <ThemeToggle />
             <ClusterSelect />
             <WalletButton />

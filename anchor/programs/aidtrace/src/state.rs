@@ -43,13 +43,37 @@ pub struct Campaign {
     pub created_at: i64,
     pub ends_at: Option<i64>,
     pub evidence_digest: [u8; 32],
+    pub metadata_uri: String,
+    pub next_donation_id: u64,
     pub next_allocation_id: u64,
     pub bump: u8,
 }
 
 impl Campaign {
-    pub const SPACE: usize = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 8 + 9 + 32 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 8 + 9 + 32 + 4 + 500 + 8 + 8 + 1;
 }
+
+#[account]
+pub struct CampaignVault {
+    pub campaign: Pubkey,
+    pub bump: u8,
+}
+impl CampaignVault { pub const SPACE: usize = 8 + 32 + 1; }
+
+#[account]
+pub struct Donation {
+    pub campaign: Pubkey,
+    pub donor: Pubkey,
+    pub donation_id: u64,
+    pub amount: u64,
+    pub source: DonationSource,
+    pub occurred_at: i64,
+    pub bump: u8,
+}
+impl Donation { pub const SPACE: usize = 8 + 32 + 32 + 8 + 8 + 1 + 8 + 1; }
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DonationSource { Standard }
 
 #[account]
 pub struct Allocation {

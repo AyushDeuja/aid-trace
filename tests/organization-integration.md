@@ -3,7 +3,8 @@
 Run these on a fresh local validator with the revised program deployed, a
 Postgres database configured, and the `GlobalConfig` PDA initialized by wallet
 `A` (the admin). Use separate wallets `B` (founder), `C` (new authority), and
-`D` (unauthorized). Publish two different valid profile JSON files to IPFS.
+`D` (unauthorized). Prepare two different valid profiles through the in-app
+metadata form; each submission creates an immutable PostgreSQL document.
 
 | ID     | Action                                                                                                                | Expected result                                                                                                  |
 | ------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -21,7 +22,7 @@ Postgres database configured, and the `GlobalConfig` PDA initialized by wallet
 | ORG-12 | `A` closes an organization and then tries to reactivate it.                                                           | Close succeeds and clears pending transfer; reactivation and further edits fail.                                 |
 | IDX-01 | Run `npm run index:organizations` twice over the same chain state and events.                                         | One projection row per PDA and one event row per signature/log index; no duplicated history.                     |
 | IDX-02 | Apply an older account snapshot after a newer slot.                                                                   | Projection retains the newer authority, digest, status, and slot.                                                |
-| IDX-03 | Link profile 1's IPFS URL to profile 2's canonical digest.                                                            | API omits or rejects the mismatched profile; it still shows canonical status.                                    |
+| IDX-03 | Link profile 1's `aidtrace://` reference to profile 2's canonical digest.                                            | API omits or rejects the mismatched profile; it still shows canonical status.                                    |
 | UI-01  | Connect `B`, open `/org`, register, and follow the transaction link.                                                  | Form validates the profile, shows signing/confirmation stages, then displays `Pending` from Solana.              |
 | UI-02  | Connect `A` and select `B`'s organization.                                                                            | Only admin controls are offered; verify and activate update canonical status after confirmation.                 |
 | UI-03  | Reject a wallet signature or disconnect mid-flow.                                                                     | UI shows failure and does not present the transaction as confirmed.                                              |

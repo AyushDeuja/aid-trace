@@ -19,6 +19,7 @@ import {
   validateMetadata,
   validateMetadataUri,
 } from "../app/lib/organizations/metadata";
+import { parseMetadataUri } from "../app/lib/metadata-documents";
 
 const founder = address("11111111111111111111111111111111");
 const other = address("SysvarRent111111111111111111111111111111111");
@@ -36,12 +37,13 @@ function sampleAccount(
   data.set(encoder.encode(other), 40);
   data[72] = options.pending ? 1 : 0;
   if (options.pending) data.set(encoder.encode(founder), 73);
-  data.fill(0xab, 105, 137);
-  data[137] = options.status ?? 0;
-  data[138] = options.verified ? 1 : 0;
-  data.writeBigUInt64LE(12n, 139);
-  data.writeBigUInt64LE(3n, 147);
-  data[155] = 254;
+  const body = options.pending ? 105 : 73;
+  data.fill(0xab, body, body + 32);
+  data[body + 32] = options.status ?? 0;
+  data[body + 33] = options.verified ? 1 : 0;
+  data.writeBigUInt64LE(12n, body + 34);
+  data.writeBigUInt64LE(3n, body + 42);
+  data[body + 50] = 254;
   return data;
 }
 
@@ -105,7 +107,7 @@ test("decoder rejects malformed organization layout and enum values", async () =
     /pending authority/
   );
   const invalidStatus = sampleAccount();
-  invalidStatus[137] = 4;
+  invalidStatus[105] = 4;
   assert.throws(() => decodeOrganization(key, invalidStatus), /status/);
 });
 
@@ -194,4 +196,14 @@ test("metadata display requires exact JSON bytes matching the canonical hash", a
   } finally {
     globalThis.fetch = previous;
   }
+});
+
+test("AidTrace metadata references are typed and UUID-bound", () => {
+  const uri = "aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000";
+  assert.deepEqual(parseMetadataUri(uri), {
+    kind: "campaign",
+    id: "550e8400-e29b-41d4-a716-446655440000",
+  });
+  assert.throws(() => parseMetadataUri(uri, "organization"), /Invalid/);
+  assert.throws(() => parseMetadataUri("aidtrace://campaign/not-a-uuid"), /Invalid/);
 });

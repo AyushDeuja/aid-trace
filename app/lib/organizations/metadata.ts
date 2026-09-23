@@ -46,6 +46,13 @@ export function validateMetadataUri(uri: string) {
   return uri;
 }
 export async function fetchVerifiedMetadata(uri: string, digest: string) {
+  if (uri.startsWith("aidtrace://")) {
+    const { readMetadataDocument } = await import("../metadata-documents");
+    const result = await readMetadataDocument(uri, "organization");
+    if (result.digest !== digest)
+      throw new Error("Metadata SHA-256 does not match the on-chain digest");
+    return result.metadata as OrganizationMetadata;
+  }
   const result = await fetchMetadataWithDigest(uri);
   if (result.digest !== digest)
     throw new Error("Metadata SHA-256 does not match the on-chain digest");
