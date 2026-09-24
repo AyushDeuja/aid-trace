@@ -187,7 +187,7 @@ export async function decodeAllocation(
   raw: Uint8Array
 ): Promise<Allocation> {
   if (
-    raw.length !== 154 ||
+    raw.length !== 146 ||
     !(await discriminator("account", "Allocation")).every(
       (b, i) => raw[i] === b
     )
@@ -242,7 +242,7 @@ export async function decodeDisbursement(
   raw: Uint8Array
 ): Promise<Disbursement> {
   if (
-    raw.length !== 210 ||
+    raw.length !== 202 ||
     !(await discriminator("account", "Disbursement")).every(
       (b, i) => raw[i] === b
     )
