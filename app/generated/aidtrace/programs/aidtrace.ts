@@ -18,10 +18,13 @@ import {
 } from "@solana/kit";
 import {
   parseAcceptOrganizationAuthorityInstruction,
+  parseCancelAllocationInstruction,
+  parseCreateAllocationInstruction,
   parseCreateCampaignInstruction,
   parseDonateInstruction,
   parseInitializeConfigInstruction,
   parseNominateOrganizationAuthorityInstruction,
+  parseRecordDisbursementInstruction,
   parseRegisterOrganizationInstruction,
   parseSetCampaignStatusInstruction,
   parseSetOrganizationStatusInstruction,
@@ -30,10 +33,13 @@ import {
   parseUpdateCampaignInstruction,
   parseUpdateOrganizationMetadataInstruction,
   type ParsedAcceptOrganizationAuthorityInstruction,
+  type ParsedCancelAllocationInstruction,
+  type ParsedCreateAllocationInstruction,
   type ParsedCreateCampaignInstruction,
   type ParsedDonateInstruction,
   type ParsedInitializeConfigInstruction,
   type ParsedNominateOrganizationAuthorityInstruction,
+  type ParsedRecordDisbursementInstruction,
   type ParsedRegisterOrganizationInstruction,
   type ParsedSetCampaignStatusInstruction,
   type ParsedSetOrganizationStatusInstruction,
@@ -47,8 +53,10 @@ export const AIDTRACE_PROGRAM_ADDRESS =
   "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
 
 export enum AidtraceAccount {
+  Allocation,
   Campaign,
   CampaignVault,
+  Disbursement,
   Donation,
   GlobalConfig,
   Organization,
@@ -58,6 +66,17 @@ export function identifyAidtraceAccount(
   account: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
 ): AidtraceAccount {
   const data = "data" in account ? account.data : account;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([147, 154, 3, 177, 155, 25, 131, 176]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceAccount.Allocation;
+  }
   if (
     containsBytes(
       data,
@@ -79,6 +98,17 @@ export function identifyAidtraceAccount(
     )
   ) {
     return AidtraceAccount.CampaignVault;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([193, 233, 122, 65, 84, 105, 36, 99]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceAccount.Disbursement;
   }
   if (
     containsBytes(
@@ -120,10 +150,13 @@ export function identifyAidtraceAccount(
 
 export enum AidtraceInstruction {
   AcceptOrganizationAuthority,
+  CancelAllocation,
+  CreateAllocation,
   CreateCampaign,
   Donate,
   InitializeConfig,
   NominateOrganizationAuthority,
+  RecordDisbursement,
   RegisterOrganization,
   SetCampaignStatus,
   SetOrganizationStatus,
@@ -147,6 +180,28 @@ export function identifyAidtraceInstruction(
     )
   ) {
     return AidtraceInstruction.AcceptOrganizationAuthority;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([192, 25, 142, 214, 43, 145, 29, 123]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.CancelAllocation;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([98, 201, 189, 117, 160, 160, 157, 141]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.CreateAllocation;
   }
   if (
     containsBytes(
@@ -191,6 +246,17 @@ export function identifyAidtraceInstruction(
     )
   ) {
     return AidtraceInstruction.NominateOrganizationAuthority;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([249, 39, 225, 180, 83, 171, 178, 224]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.RecordDisbursement;
   }
   if (
     containsBytes(
@@ -281,6 +347,12 @@ export type ParsedAidtraceInstruction<
       instructionType: AidtraceInstruction.AcceptOrganizationAuthority;
     } & ParsedAcceptOrganizationAuthorityInstruction<TProgram>)
   | ({
+      instructionType: AidtraceInstruction.CancelAllocation;
+    } & ParsedCancelAllocationInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.CreateAllocation;
+    } & ParsedCreateAllocationInstruction<TProgram>)
+  | ({
       instructionType: AidtraceInstruction.CreateCampaign;
     } & ParsedCreateCampaignInstruction<TProgram>)
   | ({
@@ -292,6 +364,9 @@ export type ParsedAidtraceInstruction<
   | ({
       instructionType: AidtraceInstruction.NominateOrganizationAuthority;
     } & ParsedNominateOrganizationAuthorityInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.RecordDisbursement;
+    } & ParsedRecordDisbursementInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.RegisterOrganization;
     } & ParsedRegisterOrganizationInstruction<TProgram>)
@@ -326,6 +401,20 @@ export function parseAidtraceInstruction<TProgram extends string>(
         ...parseAcceptOrganizationAuthorityInstruction(instruction),
       };
     }
+    case AidtraceInstruction.CancelAllocation: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.CancelAllocation,
+        ...parseCancelAllocationInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.CreateAllocation: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.CreateAllocation,
+        ...parseCreateAllocationInstruction(instruction),
+      };
+    }
     case AidtraceInstruction.CreateCampaign: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -352,6 +441,13 @@ export function parseAidtraceInstruction<TProgram extends string>(
       return {
         instructionType: AidtraceInstruction.NominateOrganizationAuthority,
         ...parseNominateOrganizationAuthorityInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.RecordDisbursement: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.RecordDisbursement,
+        ...parseRecordDisbursementInstruction(instruction),
       };
     }
     case AidtraceInstruction.RegisterOrganization: {

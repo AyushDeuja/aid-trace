@@ -44,11 +44,17 @@ export const AIDTRACE_ERROR__INVALID_PDA = 0x177c; // 6012
 export const AIDTRACE_ERROR__INVALID_ACCOUNT_OWNER = 0x177d; // 6013
 /** InvalidSequence: The supplied sequence number is invalid */
 export const AIDTRACE_ERROR__INVALID_SEQUENCE = 0x177e; // 6014
+/** InsufficientAvailableFunds: The campaign does not have enough unreserved funds */
+export const AIDTRACE_ERROR__INSUFFICIENT_AVAILABLE_FUNDS = 0x177f; // 6015
+/** InsufficientAllocationFunds: The allocation does not have enough unspent funds */
+export const AIDTRACE_ERROR__INSUFFICIENT_ALLOCATION_FUNDS = 0x1780; // 6016
 
 export type AidtraceError =
   | typeof AIDTRACE_ERROR__ARITHMETIC_OVERFLOW
   | typeof AIDTRACE_ERROR__CONFIGURATION_ALREADY_INITIALIZED
   | typeof AIDTRACE_ERROR__COUNTER_EXHAUSTED
+  | typeof AIDTRACE_ERROR__INSUFFICIENT_ALLOCATION_FUNDS
+  | typeof AIDTRACE_ERROR__INSUFFICIENT_AVAILABLE_FUNDS
   | typeof AIDTRACE_ERROR__INVALID_ACCOUNT_OWNER
   | typeof AIDTRACE_ERROR__INVALID_AMOUNT
   | typeof AIDTRACE_ERROR__INVALID_AUTHORITY_TRANSFER
@@ -68,6 +74,8 @@ if (process.env.NODE_ENV !== "production") {
     [AIDTRACE_ERROR__ARITHMETIC_OVERFLOW]: `Arithmetic overflow or underflow`,
     [AIDTRACE_ERROR__CONFIGURATION_ALREADY_INITIALIZED]: `Global configuration has already been initialized`,
     [AIDTRACE_ERROR__COUNTER_EXHAUSTED]: `A parent-scoped record counter has reached its maximum value`,
+    [AIDTRACE_ERROR__INSUFFICIENT_ALLOCATION_FUNDS]: `The allocation does not have enough unspent funds`,
+    [AIDTRACE_ERROR__INSUFFICIENT_AVAILABLE_FUNDS]: `The campaign does not have enough unreserved funds`,
     [AIDTRACE_ERROR__INVALID_ACCOUNT_OWNER]: `The supplied account has an unexpected owner`,
     [AIDTRACE_ERROR__INVALID_AMOUNT]: `The provided amount must be greater than zero`,
     [AIDTRACE_ERROR__INVALID_AUTHORITY_TRANSFER]: `The proposed organization authority is invalid`,

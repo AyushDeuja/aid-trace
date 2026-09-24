@@ -7,10 +7,13 @@
  */
 
 export * from "./acceptOrganizationAuthority";
+export * from "./cancelAllocation";
+export * from "./createAllocation";
 export * from "./createCampaign";
 export * from "./donate";
 export * from "./initializeConfig";
 export * from "./nominateOrganizationAuthority";
+export * from "./recordDisbursement";
 export * from "./registerOrganization";
 export * from "./setCampaignStatus";
 export * from "./setOrganizationStatus";

@@ -6,8 +6,10 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./allocation";
 export * from "./campaign";
 export * from "./config";
+export * from "./disbursement";
 export * from "./donation";
 export * from "./organization";
 export * from "./vault";
