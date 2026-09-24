@@ -270,6 +270,9 @@ export default function OrganizationPage() {
           <button className="text-sm underline" onClick={() => void refresh()}>
             Refresh canonical state
           </button>
+          <a className="block text-sm underline" href="/org/finance">
+            Open organization finance dashboard
+          </a>
           {canManage && selected.status !== "Closed" && (
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-semibold">Manage profile</h3>

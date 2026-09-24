@@ -32,4 +32,8 @@ pub enum AidTraceError {
     InvalidAccountOwner,
     #[msg("The supplied sequence number is invalid")]
     InvalidSequence,
+    #[msg("The campaign does not have enough unreserved funds")]
+    InsufficientAvailableFunds,
+    #[msg("The allocation does not have enough unspent funds")]
+    InsufficientAllocationFunds,
 }

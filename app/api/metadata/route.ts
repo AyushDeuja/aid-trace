@@ -6,7 +6,7 @@ import {
 } from "../../lib/metadata-documents";
 
 export const runtime = "nodejs";
-const kinds = new Set<MetadataKind>(["organization", "campaign"]);
+const kinds = new Set<MetadataKind>(["organization", "campaign", "allocation", "disbursement"]);
 
 export async function POST(request: NextRequest) {
   try {

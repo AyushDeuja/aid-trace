@@ -114,6 +114,17 @@ pub struct AllocationCreated {
     pub actor: Pubkey,
     pub allocation_id: u64,
     pub amount: u64,
+    pub recipient: Pubkey,
+    pub purpose_digest: [u8; 32],
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct AllocationCancelled {
+    pub allocation: Pubkey,
+    pub campaign: Pubkey,
+    pub actor: Pubkey,
+    pub released_amount: u64,
     pub occurred_at: i64,
 }
 
@@ -125,6 +136,8 @@ pub struct DisbursementRecorded {
     pub actor: Pubkey,
     pub disbursement_id: u64,
     pub amount: u64,
+    pub recipient: Pubkey,
+    pub description_digest: [u8; 32],
     pub occurred_at: i64,
 }
 
