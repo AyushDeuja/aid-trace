@@ -13,8 +13,10 @@ import {
 import { listCampaigns, type Campaign } from "../../lib/campaigns/chain";
 import {
   availableFunds,
+  allocationPda,
   cancelAllocationIx,
   createAllocationIx,
+  disbursementPda,
   listAllocations,
   listDisbursements,
   recordDisbursementIx,
@@ -45,6 +47,10 @@ export default function FinancePage() {
   const [selected, setSelected] = useState<Campaign | null>(null);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [disbursements, setDisbursements] = useState<Disbursement[]>([]);
+  const [history, setHistory] = useState<{
+    allocations: Array<Record<string, string>>;
+    disbursements: Array<Record<string, string>>;
+  } | null>(null);
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -83,9 +89,14 @@ export default function FinancePage() {
       ]);
       setAllocations(nextAllocations);
       setDisbursements(nextDisbursements);
+      const response = await fetch(
+        `/api/finance/history?campaign=${current.address}`
+      );
+      setHistory(response.ok ? await response.json() : null);
     } else {
       setAllocations([]);
       setDisbursements([]);
+      setHistory(null);
     }
   }, [cluster, selected?.address, supported, walletAddress]);
   useEffect(() => {
@@ -99,7 +110,10 @@ export default function FinancePage() {
     !!selected &&
     selected.authority === walletAddress &&
     selected.status === "Active";
-  const transact = async (build: () => Promise<Instruction>) => {
+  const transact = async (
+    build: () => Promise<Instruction>,
+    after?: (signature: string) => Promise<void>
+  ) => {
     setMessage("");
     setSignature("");
     setStage("Preparing");
@@ -108,6 +122,7 @@ export default function FinancePage() {
       setStage("Awaiting wallet signature");
       const next = await send({ instructions: [instruction] });
       setSignature(next);
+      if (after) await after(next);
       setStage("Confirmed on Solana");
       await refresh();
     } catch (error) {
@@ -127,57 +142,103 @@ export default function FinancePage() {
         : null,
     [selected]
   );
+  const indexed = useMemo(
+    () =>
+      new Map(
+        [
+          ...(history?.allocations || []),
+          ...(history?.disbursements || []),
+        ].map((item) => [item.address, item])
+      ),
+    [history]
+  );
   const createAllocation = () => {
     if (!selected || !walletAddress) return;
-    void transact(async () => {
-      const metadata = await fetch("/api/metadata", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind: "allocation",
-          metadata: { purpose, category, description },
-        }),
-      }).then(async (response) => {
-        const body = await response.json();
-        if (!response.ok)
-          throw new Error(body.error || "Could not create allocation metadata");
-        return body as { digest: string };
-      });
-      return createAllocationIx(
-        selected,
-        address(walletAddress),
-        address(recipient),
-        lamports(amount),
-        metadata.digest
-      );
-    });
+    let metadata: { digest: string; uri: string } | undefined;
+    const allocationId = selected.nextAllocationId;
+    void transact(
+      async () => {
+        const metadata = await fetch("/api/metadata", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            kind: "allocation",
+            metadata: { purpose, category, description },
+          }),
+        }).then(async (response) => {
+          const body = await response.json();
+          if (!response.ok)
+            throw new Error(
+              body.error || "Could not create allocation metadata"
+            );
+          return body as { digest: string; uri: string };
+        });
+        return createAllocationIx(
+          selected,
+          address(walletAddress),
+          address(recipient),
+          lamports(amount),
+          metadata.digest
+        );
+      },
+      async (signature) => {
+        await fetch("/api/finance/metadata-link", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            address: await allocationPda(selected.address, allocationId),
+            kind: "allocation",
+            digest: metadata!.digest,
+            uri: metadata!.uri,
+            signature,
+          }),
+        });
+      }
+    );
   };
   const payout = (allocation: Allocation) => {
     if (!selected || !walletAddress) return;
-    void transact(async () => {
-      const metadata = await fetch("/api/metadata", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind: "disbursement",
-          metadata: { description: payoutDescription },
-        }),
-      }).then(async (response) => {
-        const body = await response.json();
-        if (!response.ok)
-          throw new Error(
-            body.error || "Could not create disbursement metadata"
-          );
-        return body as { digest: string };
-      });
-      return recordDisbursementIx(
-        allocation,
-        selected,
-        address(walletAddress),
-        lamports(payoutAmount),
-        metadata.digest
-      );
-    });
+    let metadata: { digest: string; uri: string } | undefined;
+    const disbursementId = allocation.nextDisbursementId;
+    void transact(
+      async () => {
+        const metadata = await fetch("/api/metadata", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            kind: "disbursement",
+            metadata: { description: payoutDescription },
+          }),
+        }).then(async (response) => {
+          const body = await response.json();
+          if (!response.ok)
+            throw new Error(
+              body.error || "Could not create disbursement metadata"
+            );
+          return body as { digest: string; uri: string };
+        });
+        return recordDisbursementIx(
+          allocation,
+          selected,
+          address(walletAddress),
+          lamports(payoutAmount),
+          metadata.digest
+        );
+      },
+      async (signature) => {
+        await fetch("/api/finance/metadata-link", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            address: await disbursementPda(allocation.address, disbursementId),
+            kind: "disbursement",
+            digest: metadata!.digest,
+            uri: metadata!.uri,
+            signature,
+          }),
+        });
+      }
+    );
   };
   return (
     <main className="mx-auto max-w-6xl space-y-7 px-5 py-10">
@@ -263,6 +324,11 @@ export default function FinancePage() {
           )}
           <p className="text-sm text-muted">
             Delivery verification: Pending Task 5.
+          </p>
+          <p className="text-sm text-muted">
+            {history
+              ? "Audit history indexed from confirmed Solana data."
+              : "Audit history is indexing. Run npm run index:finance to populate it."}
           </p>
           {canManage ? (
             <section className="space-y-3 rounded-xl border p-5">
@@ -351,6 +417,34 @@ export default function FinancePage() {
                     {sol(allocation.spent)} spent of {sol(allocation.amount)} ·{" "}
                     {sol(allocation.amount - allocation.spent)} remaining
                   </p>
+                  {indexed.get(allocation.address)?.uri && (
+                    <p className="text-sm">
+                      <a
+                        className="underline"
+                        href={`/api/metadata?uri=${encodeURIComponent(indexed.get(allocation.address)!.uri)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View allocation metadata
+                      </a>
+                      {indexed.get(allocation.address)?.signature && (
+                        <>
+                          {" "}
+                          ·{" "}
+                          <a
+                            className="underline"
+                            href={getExplorerUrl(
+                              `/tx/${indexed.get(allocation.address)!.signature}`
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View transaction
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  )}
                   {canManage && allocation.status === "Open" && (
                     <div className="space-y-2 border-t pt-3">
                       <label className="block text-sm">
@@ -413,6 +507,34 @@ export default function FinancePage() {
                   <p className="break-all text-sm text-muted">
                     Recipient: {item.recipient}
                   </p>
+                  {indexed.get(item.address)?.uri && (
+                    <p className="text-sm">
+                      <a
+                        className="underline"
+                        href={`/api/metadata?uri=${encodeURIComponent(indexed.get(item.address)!.uri)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View disbursement metadata
+                      </a>
+                      {indexed.get(item.address)?.signature && (
+                        <>
+                          {" "}
+                          ·{" "}
+                          <a
+                            className="underline"
+                            href={getExplorerUrl(
+                              `/tx/${indexed.get(item.address)!.signature}`
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View transaction
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  )}
                 </article>
               ))
             )}
