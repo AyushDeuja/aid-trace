@@ -270,8 +270,11 @@ export default function OrganizationPage() {
           <button className="text-sm underline" onClick={() => void refresh()}>
             Refresh canonical state
           </button>
-          <a className="block text-sm underline" href="/org/finance">
-            Open organization finance dashboard
+          <a
+            className="inline-flex rounded border px-3 py-2 text-sm hover:bg-muted"
+            href="/org/finance"
+          >
+            Open finance dashboard
           </a>
           {canManage && selected.status !== "Closed" && (
             <div className="space-y-3 border-t pt-4">
