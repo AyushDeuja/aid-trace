@@ -390,6 +390,199 @@ pub mod aidtrace {
         });
         Ok(())
     }
+
+    pub fn create_allocation(
+        ctx: Context<CreateAllocation>,
+        allocation_id: u64,
+        recipient: Pubkey,
+        amount: u64,
+        purpose_digest: [u8; 32],
+    ) -> Result<()> {
+        require!(!ctx.accounts.config.paused, AidTraceError::ProtocolPaused);
+        require!(
+            ctx.accounts.organization.verified
+                && ctx.accounts.organization.status == OrganizationStatus::Active,
+            AidTraceError::OrganizationNotActive
+        );
+        require!(
+            ctx.accounts.campaign.status == CampaignStatus::Active,
+            AidTraceError::InvalidStatusTransition
+        );
+        require!(amount > 0, AidTraceError::InvalidAmount);
+        validate_digest(&purpose_digest)?;
+        require!(recipient != Pubkey::default(), AidTraceError::InvalidInput);
+        require!(
+            allocation_id == ctx.accounts.campaign.next_allocation_id,
+            AidTraceError::InvalidSequence
+        );
+        let available = available_funds(&ctx.accounts.campaign)?;
+        require!(amount <= available, AidTraceError::InsufficientAvailableFunds);
+
+        let now = Clock::get()?.unix_timestamp;
+        let allocation = &mut ctx.accounts.allocation;
+        allocation.campaign = ctx.accounts.campaign.key();
+        allocation.allocation_id = allocation_id;
+        allocation.recipient = recipient;
+        allocation.amount = amount;
+        allocation.spent = 0;
+        allocation.purpose_digest = purpose_digest;
+        allocation.created_at = now;
+        allocation.status = AllocationStatus::Open;
+        allocation.next_disbursement_id = 0;
+        allocation.bump = ctx.bumps.allocation;
+
+        let campaign = &mut ctx.accounts.campaign;
+        campaign.amount_reserved = campaign
+            .amount_reserved
+            .checked_add(amount)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        campaign.next_allocation_id = campaign
+            .next_allocation_id
+            .checked_add(1)
+            .ok_or(AidTraceError::CounterExhausted)?;
+        emit!(AllocationCreated {
+            allocation: allocation.key(),
+            campaign: campaign.key(),
+            actor: ctx.accounts.authority.key(),
+            allocation_id,
+            amount,
+            recipient,
+            purpose_digest,
+            occurred_at: now,
+        });
+        Ok(())
+    }
+
+    pub fn cancel_allocation(ctx: Context<ManageAllocation>) -> Result<()> {
+        require!(
+            ctx.accounts.allocation.status == AllocationStatus::Open,
+            AidTraceError::InvalidStatusTransition
+        );
+        let released_amount = ctx
+            .accounts
+            .allocation
+            .amount
+            .checked_sub(ctx.accounts.allocation.spent)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        ctx.accounts.campaign.amount_reserved = ctx
+            .accounts
+            .campaign
+            .amount_reserved
+            .checked_sub(released_amount)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        ctx.accounts.allocation.status = AllocationStatus::Cancelled;
+        emit!(AllocationCancelled {
+            allocation: ctx.accounts.allocation.key(),
+            campaign: ctx.accounts.campaign.key(),
+            actor: ctx.accounts.authority.key(),
+            released_amount,
+            occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn record_disbursement(
+        ctx: Context<RecordDisbursement>,
+        disbursement_id: u64,
+        amount: u64,
+        description_digest: [u8; 32],
+    ) -> Result<()> {
+        require!(!ctx.accounts.config.paused, AidTraceError::ProtocolPaused);
+        require!(
+            ctx.accounts.organization.verified
+                && ctx.accounts.organization.status == OrganizationStatus::Active,
+            AidTraceError::OrganizationNotActive
+        );
+        require!(
+            ctx.accounts.campaign.status == CampaignStatus::Active,
+            AidTraceError::InvalidStatusTransition
+        );
+        require!(
+            ctx.accounts.allocation.status == AllocationStatus::Open,
+            AidTraceError::InvalidStatusTransition
+        );
+        require!(amount > 0, AidTraceError::InvalidAmount);
+        validate_digest(&description_digest)?;
+        require!(
+            ctx.accounts.recipient.key() == ctx.accounts.allocation.recipient,
+            AidTraceError::InvalidInput
+        );
+        require!(
+            disbursement_id == ctx.accounts.allocation.next_disbursement_id,
+            AidTraceError::InvalidSequence
+        );
+        let remaining = ctx
+            .accounts
+            .allocation
+            .amount
+            .checked_sub(ctx.accounts.allocation.spent)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        require!(amount <= remaining, AidTraceError::InsufficientAllocationFunds);
+        let rent_floor = Rent::get()?.minimum_balance(CampaignVault::SPACE);
+        let vault_lamports = ctx.accounts.vault.to_account_info().lamports();
+        require!(
+            vault_lamports >= rent_floor.saturating_add(amount),
+            AidTraceError::InsufficientAvailableFunds
+        );
+
+        let now = Clock::get()?.unix_timestamp;
+        {
+            let vault_info = ctx.accounts.vault.to_account_info();
+            let mut vault_lamports = vault_info.try_borrow_mut_lamports()?;
+            **vault_lamports = (**vault_lamports)
+                .checked_sub(amount)
+                .ok_or(AidTraceError::ArithmeticOverflow)?;
+        }
+        {
+            let recipient_info = ctx.accounts.recipient.to_account_info();
+            let mut recipient_lamports = recipient_info.try_borrow_mut_lamports()?;
+            **recipient_lamports = (**recipient_lamports)
+                .checked_add(amount)
+                .ok_or(AidTraceError::ArithmeticOverflow)?;
+        }
+        let allocation = &mut ctx.accounts.allocation;
+        allocation.spent = allocation
+            .spent
+            .checked_add(amount)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        allocation.next_disbursement_id = allocation
+            .next_disbursement_id
+            .checked_add(1)
+            .ok_or(AidTraceError::CounterExhausted)?;
+        let campaign = &mut ctx.accounts.campaign;
+        campaign.amount_reserved = campaign
+            .amount_reserved
+            .checked_sub(amount)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        campaign.amount_disbursed = campaign
+            .amount_disbursed
+            .checked_add(amount)
+            .ok_or(AidTraceError::ArithmeticOverflow)?;
+        let disbursement = &mut ctx.accounts.disbursement;
+        disbursement.allocation = allocation.key();
+        disbursement.campaign = campaign.key();
+        disbursement.disbursement_id = disbursement_id;
+        disbursement.recipient = ctx.accounts.recipient.key();
+        disbursement.amount = amount;
+        disbursement.evidence_digest = description_digest;
+        disbursement.created_at = now;
+        disbursement.authority = ctx.accounts.authority.key();
+        disbursement.status = DisbursementStatus::Recorded;
+        disbursement.next_delivery_verification_id = 0;
+        disbursement.bump = ctx.bumps.disbursement;
+        emit!(DisbursementRecorded {
+            disbursement: disbursement.key(),
+            allocation: allocation.key(),
+            campaign: campaign.key(),
+            actor: ctx.accounts.authority.key(),
+            disbursement_id,
+            amount,
+            recipient: ctx.accounts.recipient.key(),
+            description_digest,
+            occurred_at: now,
+        });
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -511,6 +704,57 @@ pub struct Donate<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+#[instruction(allocation_id: u64)]
+pub struct CreateAllocation<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump, has_one = authority @ AidTraceError::Unauthorized)]
+    pub organization: Account<'info, Organization>,
+    #[account(mut, seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(init, payer = authority, space = Allocation::SPACE, seeds = [ALLOCATION_SEED, campaign.key().as_ref(), &allocation_id.to_le_bytes()], bump)]
+    pub allocation: Account<'info, Allocation>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ManageAllocation<'info> {
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump, has_one = authority @ AidTraceError::Unauthorized)]
+    pub organization: Account<'info, Organization>,
+    #[account(mut, seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(mut, seeds = [ALLOCATION_SEED, campaign.key().as_ref(), &allocation.allocation_id.to_le_bytes()], bump = allocation.bump, has_one = campaign)]
+    pub allocation: Account<'info, Allocation>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(disbursement_id: u64)]
+pub struct RecordDisbursement<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump, has_one = authority @ AidTraceError::Unauthorized)]
+    pub organization: Account<'info, Organization>,
+    #[account(mut, seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(mut, seeds = [CAMPAIGN_VAULT_SEED, campaign.key().as_ref()], bump = vault.bump, has_one = campaign)]
+    pub vault: Account<'info, CampaignVault>,
+    #[account(mut, seeds = [ALLOCATION_SEED, campaign.key().as_ref(), &allocation.allocation_id.to_le_bytes()], bump = allocation.bump, has_one = campaign)]
+    pub allocation: Box<Account<'info, Allocation>>,
+    #[account(init, payer = authority, space = Disbursement::SPACE, seeds = [DISBURSEMENT_SEED, allocation.key().as_ref(), &disbursement_id.to_le_bytes()], bump)]
+    pub disbursement: Box<Account<'info, Disbursement>>,
+    /// CHECK: the instruction verifies this key equals `allocation.recipient`;
+    /// it receives lamports only and is never deserialized or owned by this program.
+    #[account(mut)]
+    pub recipient: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 fn campaign_status_event(status: CampaignStatus) -> CampaignStatusEvent {
     match status {
         CampaignStatus::Draft => CampaignStatusEvent::Draft,
@@ -519,6 +763,14 @@ fn campaign_status_event(status: CampaignStatus) -> CampaignStatusEvent {
         CampaignStatus::Paused => CampaignStatusEvent::Paused,
         CampaignStatus::Closed => CampaignStatusEvent::Closed,
     }
+}
+
+fn available_funds(campaign: &Campaign) -> Result<u64> {
+    campaign
+        .amount_raised
+        .checked_sub(campaign.amount_disbursed)
+        .and_then(|value| value.checked_sub(campaign.amount_reserved))
+        .ok_or_else(|| error!(AidTraceError::ArithmeticOverflow))
 }
 
 fn campaign_status_transition_allowed(previous: CampaignStatus, next: CampaignStatus) -> bool {
@@ -681,6 +933,7 @@ fn initialize_campaign(
     campaign.target_amount = target_amount;
     campaign.amount_raised = 0;
     campaign.amount_disbursed = 0;
+    campaign.amount_reserved = 0;
     campaign.status = CampaignStatus::Draft;
     campaign.created_at = created_at;
     campaign.ends_at = ends_at;
@@ -758,6 +1011,7 @@ mod tests {
             target_amount: 0,
             amount_raised: 1,
             amount_disbursed: 1,
+            amount_reserved: 1,
             status: CampaignStatus::Closed,
             created_at: 0,
             ends_at: None,
@@ -792,6 +1046,7 @@ mod tests {
         assert_eq!(campaign.status, CampaignStatus::Draft);
         assert_eq!(campaign.amount_raised, 0);
         assert_eq!(campaign.amount_disbursed, 0);
+        assert_eq!(campaign.amount_reserved, 0);
         assert_eq!(campaign.next_allocation_id, 0);
     }
 
@@ -806,13 +1061,27 @@ mod tests {
     fn account_spaces_include_discriminators() {
         assert_eq!(GlobalConfig::SPACE, 77);
         assert_eq!(Organization::SPACE, 156);
-        assert_eq!(Campaign::SPACE, 675);
+        assert_eq!(Campaign::SPACE, 683);
         assert_eq!(Allocation::SPACE, 146);
         assert_eq!(Disbursement::SPACE, 202);
         assert_eq!(DeliveryVerification::SPACE, 123);
         assert_eq!(TrustScore::SPACE, 92);
         assert_eq!(FraudFlag::SPACE, 84);
         assert_eq!(FundingCounter::SPACE, 73);
+    }
+
+    #[test]
+    fn available_funds_reconciles_raised_disbursed_and_reserved_amounts() {
+        let mut campaign = Campaign {
+            organization: Pubkey::new_unique(), authority: Pubkey::new_unique(), campaign_id: 0,
+            target_amount: 100, amount_raised: 100, amount_disbursed: 25, amount_reserved: 40,
+            status: CampaignStatus::Active, created_at: 0, ends_at: None, evidence_digest: digest(),
+            metadata_uri: "aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000".to_string(),
+            next_donation_id: 0, next_allocation_id: 0, bump: 0,
+        };
+        assert_eq!(available_funds(&campaign).unwrap(), 35);
+        campaign.amount_reserved = 76;
+        assert!(available_funds(&campaign).is_err());
     }
 
     #[test]

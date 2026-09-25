@@ -95,6 +95,7 @@ export type Campaign = {
   targetAmount: bigint;
   amountRaised: bigint;
   amountDisbursed: bigint;
+  amountReserved: bigint;
   status: CampaignStatus;
   createdAt: bigint;
   endsAt: bigint | null;
@@ -200,7 +201,7 @@ export async function decodeCampaign(
   key: Address,
   raw: Uint8Array
 ): Promise<Campaign> {
-  if (raw.length < 8 + 32 + 32 + 8 * 4 + 1 + 8 + 1 + 32 + 4 + 8 + 8 + 1)
+  if (raw.length < 8 + 32 + 32 + 8 * 5 + 1 + 8 + 1 + 32 + 4 + 8 + 8 + 1)
     throw new Error("Campaign account is too small");
   const expected = await discriminator("account", "Campaign");
   if (!expected.every((b, i) => raw[i] === b))
@@ -222,7 +223,8 @@ export async function decodeCampaign(
     campaignId = readU64(),
     targetAmount = readU64(),
     amountRaised = readU64(),
-    amountDisbursed = readU64();
+    amountDisbursed = readU64(),
+    amountReserved = readU64();
   const status = (
     ["Draft", "PendingReview", "Active", "Paused", "Closed"] as const
   )[raw[p++]];
@@ -254,6 +256,7 @@ export async function decodeCampaign(
     targetAmount,
     amountRaised,
     amountDisbursed,
+    amountReserved,
     status,
     createdAt,
     endsAt,

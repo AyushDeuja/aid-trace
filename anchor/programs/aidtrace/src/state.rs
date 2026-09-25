@@ -39,6 +39,8 @@ pub struct Campaign {
     pub target_amount: u64,
     pub amount_raised: u64,
     pub amount_disbursed: u64,
+    /// Funds committed to open allocations but not yet paid from the vault.
+    pub amount_reserved: u64,
     pub status: CampaignStatus,
     pub created_at: i64,
     pub ends_at: Option<i64>,
@@ -50,7 +52,7 @@ pub struct Campaign {
 }
 
 impl Campaign {
-    pub const SPACE: usize = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 8 + 9 + 32 + 4 + 500 + 8 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 8 + 9 + 32 + 4 + 500 + 8 + 8 + 1;
 }
 
 #[account]

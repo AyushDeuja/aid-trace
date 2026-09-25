@@ -10,6 +10,14 @@ import {
   type Campaign,
 } from "../app/lib/campaigns/chain";
 import { parseSolAmount, displaySol } from "../app/lib/campaigns/amount";
+import {
+  allocationPda,
+  availableFunds,
+  createAllocationIx,
+  disbursementPda,
+  recordDisbursementIx,
+  type Allocation,
+} from "../app/lib/finance/chain";
 
 const org = address("11111111111111111111111111111111");
 const donor = address("Vote111111111111111111111111111111111111111");
@@ -49,4 +57,20 @@ test("SOL amount conversion is exact and rejects invalid input", () => {
   assert.equal(displaySol(1_200_000_001n), "1.200000001");
   for (const value of ["0", "-1", "1.0000000001", "1e3", " 1", "1."])
     assert.throws(() => parseSolAmount(value));
+});
+test("allocation/disbursement PDAs and fund reservation instructions are deterministic", async () => {
+  const campaign = await campaignPda(org, 0n);
+  const state = {
+    address: campaign, organization: org, authority: donor, campaignId: 0n,
+    amountRaised: 10_000n, amountDisbursed: 2_000n, amountReserved: 3_000n,
+    nextAllocationId: 4n,
+  } as Campaign;
+  assert.equal(availableFunds(state), 5_000n);
+  const allocation = await allocationPda(campaign, 4n);
+  const create = await createAllocationIx(state, donor, donor, 1_000n, "bb".repeat(32));
+  assert.equal(create.accounts?.[3]?.address, allocation);
+  const record = { address: allocation, campaign, allocationId: 4n, recipient: donor, nextDisbursementId: 2n } as Allocation;
+  const payout = await recordDisbursementIx(record, state, donor, 500n, "cc".repeat(32));
+  assert.equal(payout.accounts?.[5]?.address, await disbursementPda(allocation, 2n));
+  assert.equal(payout.accounts?.[6]?.address, donor);
 });

@@ -84,9 +84,12 @@ export default function Home() {
         <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <span className="text-sm font-semibold tracking-tight">AidTrace</span>
           <div className="flex items-center gap-3">
-            <a href="/org" className="text-sm underline">
+            <Link href="/org" className="text-sm underline">
               Organizations
-            </a>
+            </Link>
+            <Link href="/org/finance" className="text-sm underline">
+              Finance
+            </Link>
             <Link href="/campaigns" className="text-sm underline">
               Campaigns
             </Link>

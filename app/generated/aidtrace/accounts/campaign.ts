@@ -73,6 +73,8 @@ export type Campaign = {
   targetAmount: bigint;
   amountRaised: bigint;
   amountDisbursed: bigint;
+  /** Funds committed to open allocations but not yet paid from the vault. */
+  amountReserved: bigint;
   status: CampaignStatus;
   createdAt: bigint;
   endsAt: Option<bigint>;
@@ -90,6 +92,8 @@ export type CampaignArgs = {
   targetAmount: number | bigint;
   amountRaised: number | bigint;
   amountDisbursed: number | bigint;
+  /** Funds committed to open allocations but not yet paid from the vault. */
+  amountReserved: number | bigint;
   status: CampaignStatusArgs;
   createdAt: number | bigint;
   endsAt: OptionOrNullable<number | bigint>;
@@ -111,6 +115,7 @@ export function getCampaignEncoder(): Encoder<CampaignArgs> {
       ["targetAmount", getU64Encoder()],
       ["amountRaised", getU64Encoder()],
       ["amountDisbursed", getU64Encoder()],
+      ["amountReserved", getU64Encoder()],
       ["status", getCampaignStatusEncoder()],
       ["createdAt", getI64Encoder()],
       ["endsAt", getOptionEncoder(getI64Encoder())],
@@ -134,6 +139,7 @@ export function getCampaignDecoder(): Decoder<Campaign> {
     ["targetAmount", getU64Decoder()],
     ["amountRaised", getU64Decoder()],
     ["amountDisbursed", getU64Decoder()],
+    ["amountReserved", getU64Decoder()],
     ["status", getCampaignStatusDecoder()],
     ["createdAt", getI64Decoder()],
     ["endsAt", getOptionDecoder(getI64Decoder())],
