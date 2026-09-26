@@ -93,3 +93,50 @@
     font-family: var(--font-sans);
   }
 }
+
+@keyframes field-note-scroll-up {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@keyframes field-note-scroll-down {
+  from { transform: translateY(-50%); }
+  to { transform: translateY(0); }
+}
+
+.field-note-lane {
+  animation: field-note-scroll-up 28s linear infinite;
+}
+
+.field-note-lane-reverse {
+  animation-name: field-note-scroll-down;
+  animation-duration: 34s;
+}
+
+@keyframes organizations-scroll-right {
+  from { transform: translateX(-33.333%); }
+  to { transform: translateX(0); }
+}
+
+.organizations-marquee-track {
+  animation: organizations-scroll-right 34s linear infinite;
+}
+
+.organizations-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.field-note-lane:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-note-lane,
+  .field-note-lane-reverse {
+    animation: none;
+  }
+
+  .organizations-marquee-track {
+    animation: none;
+  }
+}

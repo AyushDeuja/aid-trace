@@ -19,6 +19,8 @@ import {
   updateMetadataIx,
   type OrganizationAccount,
 } from "../lib/organizations/chain";
+import { listCampaigns, type Campaign } from "../lib/campaigns/chain";
+import { displaySol } from "../lib/campaigns/amount";
 
 type ListedOrganization = OrganizationAccount & {
   metadata?: { name: string } | null;
@@ -40,6 +42,8 @@ export default function OrganizationPage() {
   const [message, setMessage] = useState("");
   const [stage, setStage] = useState("");
   const [signature, setSignature] = useState("");
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!supported) return;
@@ -80,6 +84,20 @@ export default function OrganizationPage() {
     const handle = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(handle);
   }, [refresh]);
+
+  useEffect(() => {
+    if (!selected || !supported) {
+      setCampaigns([]);
+      return;
+    }
+    setCampaignsLoading(true);
+    void listCampaigns(cluster)
+      .then((all) =>
+        setCampaigns(all.filter((campaign) => campaign.organization === selected.address))
+      )
+      .catch(() => setCampaigns([]))
+      .finally(() => setCampaignsLoading(false));
+  }, [cluster, selected, supported]);
 
   const transact = async (
     build: () => Promise<Instruction>,
@@ -156,15 +174,15 @@ export default function OrganizationPage() {
   const disabled = isSending || !supported;
 
   return (
-    <main className="mx-auto max-w-4xl space-y-8 px-5 py-10">
+    <main className="min-h-screen bg-[#f7f4ed] px-5 py-8 text-[#302a21] md:px-8 md:py-10">
+      <div className="mx-auto max-w-[1480px] space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold">Organizations</h1>
-          <p className="text-sm text-muted">
-            Register, review, and manage canonical organization identity.
-          </p>
+          <p className="mb-2 text-xs font-extrabold tracking-[.12em] text-red-700">— ORGANIZATION WORKSPACE</p>
+          <h1 className="font-serif text-4xl">Organization overview</h1>
+          <p className="mt-2 text-sm text-[#776f63]">Balances, delivery verification and trust signals across your campaigns.</p>
         </div>
-        <WalletButton />
+        <div className="flex items-center gap-3"><WalletButton /></div>
       </header>
       {!supported && (
         <p role="alert" className="rounded-lg border p-4">
@@ -240,7 +258,8 @@ export default function OrganizationPage() {
       )}
 
       {selected && (
-        <section className="space-y-4 rounded-xl border p-5">
+        <>
+        <section className="space-y-4 border border-[#d8d0c2] bg-[#fffdf8] p-5 shadow-[0_8px_30px_-26px_#302a21]">
           <h2 className="text-xl font-semibold">
             {organizations.find((item) => item.address === selected.address)
               ?.metadata?.name || "Organization"}
@@ -271,7 +290,7 @@ export default function OrganizationPage() {
             Refresh canonical state
           </button>
           <a
-            className="inline-flex rounded border px-3 py-2 text-sm hover:bg-muted"
+            className="inline-flex border border-[#d8d0c2] px-3 py-2 text-sm font-bold hover:bg-[#eee7db]"
             href="/org/finance"
           >
             Open finance dashboard
@@ -404,6 +423,28 @@ export default function OrganizationPage() {
             </div>
           )}
         </section>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Raised", campaigns.reduce((sum, campaign) => sum + campaign.amountRaised, 0n), "SOL · canonical"],
+            ["Allocated", campaigns.reduce((sum, campaign) => sum + campaign.amountReserved, 0n), "Reserved for delivery"],
+            ["Disbursed", campaigns.reduce((sum, campaign) => sum + campaign.amountDisbursed, 0n), "Recorded on Solana"],
+            ["Available", campaigns.reduce((sum, campaign) => sum + campaign.amountRaised - campaign.amountReserved - campaign.amountDisbursed, 0n), "Available to allocate"],
+          ].map(([label, amount, detail]) => (
+            <article key={String(label)} className="border-l-2 border-red-700 bg-[#fffdf8] p-5 shadow-[0_8px_30px_-26px_#302a21]">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#776f63]">{String(label)}</p>
+              <p className="mt-1 font-serif text-3xl">{displaySol(amount as bigint)} <span className="text-base">SOL</span></p>
+              <p className="mt-1 text-xs text-[#776f63]">{String(detail)}</p>
+            </article>
+          ))}
+        </section>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="overflow-hidden border border-[#d8d0c2] bg-[#fffdf8] shadow-[0_8px_30px_-26px_#302a21]">
+            <div className="flex items-center justify-between border-b border-[#d8d0c2] p-5"><div><h2 className="font-serif text-2xl">Campaign balances</h2><p className="mt-1 text-sm text-[#776f63]">Canonical campaign accounts owned by this organization.</p></div><a href="/campaigns" className="text-sm font-bold underline">Open campaigns</a></div>
+            <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-left text-sm"><thead className="bg-[#eee7db] text-xs uppercase tracking-wide text-[#776f63]"><tr><th className="p-4">Campaign</th><th className="p-4">Status</th><th className="p-4">Raised</th><th className="p-4">Disbursed</th><th className="p-4">Available</th></tr></thead><tbody>{campaigns.map((campaign) => <tr key={campaign.address} className="border-t border-[#e6ded1]"><td className="p-4"><a href={`/campaigns/${campaign.address}`} className="font-bold underline">Campaign #{campaign.campaignId.toString()}</a><p className="mt-1 max-w-48 truncate font-mono text-xs text-[#776f63]">{campaign.address}</p></td><td className="p-4"><span className={campaign.status === "Active" ? "bg-[#dff1e1] px-2 py-1 text-xs font-bold text-[#29603a]" : "bg-[#f6e6bd] px-2 py-1 text-xs font-bold text-[#815b13]"}>{campaign.status}</span></td><td className="p-4">{displaySol(campaign.amountRaised)} SOL</td><td className="p-4">{displaySol(campaign.amountDisbursed)} SOL</td><td className="p-4">{displaySol(campaign.amountRaised - campaign.amountReserved - campaign.amountDisbursed)} SOL</td></tr>)}{!campaignsLoading && campaigns.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-[#776f63]">No campaign accounts found for this organization.</td></tr>}{campaignsLoading && <tr><td colSpan={5} className="p-8 text-center text-[#776f63]">Loading canonical campaign balances…</td></tr>}</tbody></table></div>
+          </div>
+          <aside className="space-y-6"><section className="border border-[#d8d0c2] bg-[#fffdf8] p-5"><h2 className="font-serif text-2xl">Needs attention</h2><ul className="mt-4 space-y-3 text-sm"><li className="border-l-2 border-amber-500 pl-3"><strong>Delivery verification</strong><br /><span className="text-[#776f63]">Evidence verification is not yet implemented in this app.</span></li><li className="border-l-2 border-cyan-600 pl-3"><strong>Canonical status</strong><br /><span className="text-[#776f63]">Refresh the organization record after each confirmed transaction.</span></li></ul></section><section className="border border-[#d8d0c2] bg-[#fffdf8] p-5"><h2 className="font-serif text-2xl">Trust signal</h2><p className="mt-3 font-serif text-4xl">82<span className="text-lg">/100</span></p><p className="mt-1 text-sm font-bold text-[#29603a]">Low observed risk</p><p className="mt-3 text-sm text-[#776f63]">Trust scoring is a sample presentation only; this app does not yet calculate or store AI assessments.</p></section></aside>
+        </section>
+        </>
       )}
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">Indexed organizations</h2>
@@ -425,6 +466,7 @@ export default function OrganizationPage() {
           </button>
         ))}
       </section>
+      </div>
     </main>
   );
 }
