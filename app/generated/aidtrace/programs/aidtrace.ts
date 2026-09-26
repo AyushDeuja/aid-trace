@@ -26,12 +26,15 @@ import {
   parseNominateOrganizationAuthorityInstruction,
   parseRecordDisbursementInstruction,
   parseRegisterOrganizationInstruction,
+  parseRegisterVerifierInstruction,
+  parseRevokeVerifierInstruction,
   parseSetCampaignStatusInstruction,
   parseSetOrganizationStatusInstruction,
   parseSetOrganizationVerifiedInstruction,
   parseSubmitCampaignInstruction,
   parseUpdateCampaignInstruction,
   parseUpdateOrganizationMetadataInstruction,
+  parseVerifyDeliveryInstruction,
   type ParsedAcceptOrganizationAuthorityInstruction,
   type ParsedCancelAllocationInstruction,
   type ParsedCreateAllocationInstruction,
@@ -41,12 +44,15 @@ import {
   type ParsedNominateOrganizationAuthorityInstruction,
   type ParsedRecordDisbursementInstruction,
   type ParsedRegisterOrganizationInstruction,
+  type ParsedRegisterVerifierInstruction,
+  type ParsedRevokeVerifierInstruction,
   type ParsedSetCampaignStatusInstruction,
   type ParsedSetOrganizationStatusInstruction,
   type ParsedSetOrganizationVerifiedInstruction,
   type ParsedSubmitCampaignInstruction,
   type ParsedUpdateCampaignInstruction,
   type ParsedUpdateOrganizationMetadataInstruction,
+  type ParsedVerifyDeliveryInstruction,
 } from "../instructions";
 
 export const AIDTRACE_PROGRAM_ADDRESS =
@@ -56,10 +62,12 @@ export enum AidtraceAccount {
   Allocation,
   Campaign,
   CampaignVault,
+  DeliveryVerification,
   Disbursement,
   Donation,
   GlobalConfig,
   Organization,
+  Verifier,
 }
 
 export function identifyAidtraceAccount(
@@ -98,6 +106,17 @@ export function identifyAidtraceAccount(
     )
   ) {
     return AidtraceAccount.CampaignVault;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([208, 119, 89, 196, 138, 35, 55, 189]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceAccount.DeliveryVerification;
   }
   if (
     containsBytes(
@@ -143,6 +162,17 @@ export function identifyAidtraceAccount(
   ) {
     return AidtraceAccount.Organization;
   }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([195, 177, 185, 71, 72, 61, 77, 112]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceAccount.Verifier;
+  }
   throw new Error(
     "The provided account could not be identified as a aidtrace account.",
   );
@@ -158,12 +188,15 @@ export enum AidtraceInstruction {
   NominateOrganizationAuthority,
   RecordDisbursement,
   RegisterOrganization,
+  RegisterVerifier,
+  RevokeVerifier,
   SetCampaignStatus,
   SetOrganizationStatus,
   SetOrganizationVerified,
   SubmitCampaign,
   UpdateCampaign,
   UpdateOrganizationMetadata,
+  VerifyDelivery,
 }
 
 export function identifyAidtraceInstruction(
@@ -273,6 +306,28 @@ export function identifyAidtraceInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([67, 234, 172, 169, 184, 188, 145, 156]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.RegisterVerifier;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([241, 50, 210, 153, 161, 110, 90, 123]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.RevokeVerifier;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([228, 16, 24, 238, 203, 46, 69, 189]),
       ),
       0,
@@ -335,6 +390,17 @@ export function identifyAidtraceInstruction(
   ) {
     return AidtraceInstruction.UpdateOrganizationMetadata;
   }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([154, 187, 168, 137, 254, 36, 28, 136]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.VerifyDelivery;
+  }
   throw new Error(
     "The provided instruction could not be identified as a aidtrace instruction.",
   );
@@ -371,6 +437,12 @@ export type ParsedAidtraceInstruction<
       instructionType: AidtraceInstruction.RegisterOrganization;
     } & ParsedRegisterOrganizationInstruction<TProgram>)
   | ({
+      instructionType: AidtraceInstruction.RegisterVerifier;
+    } & ParsedRegisterVerifierInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.RevokeVerifier;
+    } & ParsedRevokeVerifierInstruction<TProgram>)
+  | ({
       instructionType: AidtraceInstruction.SetCampaignStatus;
     } & ParsedSetCampaignStatusInstruction<TProgram>)
   | ({
@@ -387,7 +459,10 @@ export type ParsedAidtraceInstruction<
     } & ParsedUpdateCampaignInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.UpdateOrganizationMetadata;
-    } & ParsedUpdateOrganizationMetadataInstruction<TProgram>);
+    } & ParsedUpdateOrganizationMetadataInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.VerifyDelivery;
+    } & ParsedVerifyDeliveryInstruction<TProgram>);
 
 export function parseAidtraceInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -457,6 +532,20 @@ export function parseAidtraceInstruction<TProgram extends string>(
         ...parseRegisterOrganizationInstruction(instruction),
       };
     }
+    case AidtraceInstruction.RegisterVerifier: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.RegisterVerifier,
+        ...parseRegisterVerifierInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.RevokeVerifier: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.RevokeVerifier,
+        ...parseRevokeVerifierInstruction(instruction),
+      };
+    }
     case AidtraceInstruction.SetCampaignStatus: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -497,6 +586,13 @@ export function parseAidtraceInstruction<TProgram extends string>(
       return {
         instructionType: AidtraceInstruction.UpdateOrganizationMetadata,
         ...parseUpdateOrganizationMetadataInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.VerifyDelivery: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.VerifyDelivery,
+        ...parseVerifyDeliveryInstruction(instruction),
       };
     }
     default:

@@ -14,6 +14,9 @@ const eventNames = [
   "AllocationCreated",
   "AllocationCancelled",
   "DisbursementRecorded",
+  "VerifierRegistered",
+  "VerifierRevoked",
+  "DeliveryVerified",
 ];
 const eventDisc = new Map(
   eventNames.map((name) => [
@@ -38,7 +41,7 @@ async function rpc(method, params) {
 }
 async function setup() {
   await pool.query(
-    `CREATE TABLE IF NOT EXISTS allocation_projection (address text PRIMARY KEY,campaign text NOT NULL,allocation_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,spent text NOT NULL,purpose_digest char(64) NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS disbursement_projection (address text PRIMARY KEY,allocation text NOT NULL,campaign text NOT NULL,disbursement_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,description_digest char(64) NOT NULL,authority text NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS finance_events (signature text NOT NULL,log_index integer NOT NULL,event_name text NOT NULL,payload_base64 text NOT NULL,slot bigint NOT NULL,PRIMARY KEY(signature,log_index));`
+    `CREATE TABLE IF NOT EXISTS allocation_projection (address text PRIMARY KEY,campaign text NOT NULL,allocation_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,spent text NOT NULL,purpose_digest char(64) NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS disbursement_projection (address text PRIMARY KEY,allocation text NOT NULL,campaign text NOT NULL,disbursement_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,description_digest char(64) NOT NULL,authority text NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS finance_events (signature text NOT NULL,log_index integer NOT NULL,event_name text NOT NULL,payload_base64 text NOT NULL,slot bigint NOT NULL,PRIMARY KEY(signature,log_index)); CREATE TABLE IF NOT EXISTS verifier_projection(address text PRIMARY KEY,organization text NOT NULL,verifier text NOT NULL,active boolean NOT NULL,observed_slot bigint NOT NULL DEFAULT 0,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS delivery_verification_projection(address text PRIMARY KEY,disbursement text NOT NULL,verification_id text NOT NULL,verifier text NOT NULL,evidence_digest char(64) NOT NULL,status text NOT NULL,verified_at_chain bigint,observed_slot bigint NOT NULL DEFAULT 0,signature text,updated_at timestamptz NOT NULL DEFAULT now());`
   );
 }
 const u64 = (b, o) => b.readBigUInt64LE(o).toString();
@@ -92,6 +95,13 @@ async function syncAccounts() {
         ]
       );
     }
+    if (b.length === 74 && b.subarray(0, 8).equals(disc("Verifier"))) {
+      await pool.query(`INSERT INTO verifier_projection(address,organization,verifier,active,observed_slot) VALUES($1,$2,$3,$4,$5) ON CONFLICT(address) DO UPDATE SET active=EXCLUDED.active,observed_slot=EXCLUDED.observed_slot,updated_at=now() WHERE verifier_projection.observed_slot<=EXCLUDED.observed_slot`, [item.pubkey,key(b,8),key(b,40),b[72]===1,slot]);
+    }
+    if (b.length === 123 && b.subarray(0, 8).equals(disc("DeliveryVerification"))) {
+      const status=["Pending","Verified","Disputed","Rejected"][b[112]]; if (!status || status === "Pending") continue;
+      await pool.query(`INSERT INTO delivery_verification_projection(address,disbursement,verification_id,verifier,evidence_digest,status,verified_at_chain,observed_slot) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(address) DO UPDATE SET observed_slot=EXCLUDED.observed_slot,updated_at=now() WHERE delivery_verification_projection.observed_slot<=EXCLUDED.observed_slot`, [item.pubkey,key(b,8),u64(b,40),key(b,48),b.subarray(80,112).toString("hex"),status,b[113]===1?i64(b,114):null,slot]);
+    }
   }
 }
 async function syncEvents() {
@@ -135,12 +145,16 @@ const [
   {
     rows: [e],
   },
+  {
+    rows: [v],
+  },
 ] = await Promise.all([
   pool.query("SELECT count(*)::int AS count FROM allocation_projection"),
   pool.query("SELECT count(*)::int AS count FROM disbursement_projection"),
   pool.query("SELECT count(*)::int AS count FROM finance_events"),
+  pool.query("SELECT count(*)::int AS count FROM delivery_verification_projection"),
 ]);
 console.log(
-  `Indexed ${a.count} allocations, ${d.count} disbursements, ${e.count} finance events`
+  `Indexed ${a.count} allocations, ${d.count} disbursements, ${v.count} delivery verifications, ${e.count} finance events`
 );
 await pool.end();

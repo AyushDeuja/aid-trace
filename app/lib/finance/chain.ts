@@ -84,8 +84,12 @@ export type Disbursement = {
   createdAt: bigint;
   authority: Address;
   status: "Recorded" | "Verified" | "Disputed" | "Rejected";
+  nextDeliveryVerificationId: bigint;
   bump: number;
 };
+export type VerificationStatus = "Verified" | "Disputed" | "Rejected";
+export type Verifier = { address: Address; organization: Address; verifier: Address; active: boolean; bump: number };
+export type DeliveryVerification = { address: Address; disbursement: Address; verificationId: bigint; verifier: Address; evidenceDigest: string; status: VerificationStatus; verifiedAt: bigint | null; bump: number };
 
 export async function allocationPda(campaign: Address, id: bigint) {
   return (
@@ -102,6 +106,12 @@ export async function disbursementPda(allocation: Address, id: bigint) {
       seeds: ["disbursement", encoder.encode(allocation), u64(id)],
     })
   )[0];
+}
+export async function verifierPda(organization: Address, verifier: Address) {
+  return (await getProgramDerivedAddress({ programAddress: PROGRAM_ID, seeds: ["verifier", encoder.encode(organization), encoder.encode(verifier)] }))[0];
+}
+export async function deliveryVerificationPda(disbursement: Address, id: bigint) {
+  return (await getProgramDerivedAddress({ programAddress: PROGRAM_ID, seeds: ["delivery_verification", encoder.encode(disbursement), u64(id)] }))[0];
 }
 export async function createAllocationIx(
   campaign: Campaign,
@@ -174,6 +184,20 @@ export async function recordDisbursementIx(
       digest(descriptionDigest)
     )
   );
+}
+export async function registerVerifierIx(organization: Address, authority: Address, verifier: Address) {
+  return ix("register_verifier", [ro(organization), rw(await verifierPda(organization, verifier)), sig(authority), ro(system)], Uint8Array.from(encoder.encode(verifier)));
+}
+export async function revokeVerifierIx(organization: Address, authority: Address, verifier: Address) {
+  return ix("revoke_verifier", [ro(organization), rw(await verifierPda(organization, verifier)), sig(authority)]);
+}
+export async function verifyDeliveryIx(
+  disbursement: Disbursement, allocation: Allocation, campaign: Campaign, verifier: Address,
+  evidenceDigest: string, status: VerificationStatus
+) {
+  const verification = await deliveryVerificationPda(disbursement.address, disbursement.nextDeliveryVerificationId);
+  const code = ({ Verified: 1, Disputed: 2, Rejected: 3 } as const)[status];
+  return ix("verify_delivery", [rw(campaign.organization), ro(campaign.address), ro(allocation.address), rw(disbursement.address), ro(await verifierPda(campaign.organization, verifier)), rw(verification), sig(verifier), ro(system)], join(u64(disbursement.nextDeliveryVerificationId), digest(evidenceDigest), Uint8Array.of(code)));
 }
 
 function view(raw: Uint8Array) {
@@ -276,7 +300,7 @@ export async function decodeDisbursement(
     "Disputed",
     "Rejected",
   ] as const) as Disbursement["status"];
-  p += 8;
+  const nextDeliveryVerificationId = u();
   const bump = raw[p];
   if (!status || (await disbursementPda(allocation, disbursementId)) !== key)
     throw new Error("Disbursement account mismatch");
@@ -291,8 +315,29 @@ export async function decodeDisbursement(
     createdAt,
     authority,
     status,
+    nextDeliveryVerificationId,
     bump,
   };
+}
+export async function decodeVerifier(key: Address, raw: Uint8Array): Promise<Verifier> {
+  if (raw.length !== 74 || !(await discriminator("account", "Verifier")).every((b, i) => raw[i] === b)) throw new Error("Invalid verifier account");
+  const organization = decoder.decode(raw.slice(8, 40));
+  const verifier = decoder.decode(raw.slice(40, 72));
+  const active = raw[72] === 1;
+  if ((await verifierPda(organization, verifier)) !== key) throw new Error("Verifier account mismatch");
+  return { address: key, organization, verifier, active, bump: raw[73] };
+}
+export async function decodeDeliveryVerification(key: Address, raw: Uint8Array): Promise<DeliveryVerification> {
+  if (raw.length !== 123 || !(await discriminator("account", "DeliveryVerification")).every((b, i) => raw[i] === b)) throw new Error("Invalid delivery verification account");
+  const v = view(raw); let p = 8;
+  const disbursement = decoder.decode(raw.slice(p, p + 32)); p += 32;
+  const verificationId = v.getBigUint64(p, true); p += 8;
+  const verifier = decoder.decode(raw.slice(p, p + 32)); p += 32;
+  const evidenceDigest = hex(raw.slice(p, p + 32)); p += 32;
+  const status = is(raw, p++, [undefined, "Verified", "Disputed", "Rejected"] as const) as VerificationStatus;
+  const hasDate = raw[p++] === 1; const verifiedAt = hasDate ? v.getBigInt64(p, true) : null; p += 8;
+  if (!status || (await deliveryVerificationPda(disbursement, verificationId)) !== key) throw new Error("Delivery verification account mismatch");
+  return { address: key, disbursement, verificationId, verifier, evidenceDigest, status, verifiedAt, bump: raw[p] };
 }
 async function programAccounts(cluster: ClusterMoniker) {
   return rpcCall<
@@ -340,6 +385,16 @@ export async function listDisbursements(
       }
     } catch {}
   return values.sort((a, b) => Number(a.disbursementId - b.disbursementId));
+}
+export async function listVerifiers(cluster: ClusterMoniker, organization: Address) {
+  const accounts = await programAccounts(cluster); const values: Verifier[] = [];
+  for (const item of accounts) try { if (item.account.owner === PROGRAM_ID) { const value = await decodeVerifier(address(item.pubkey), Uint8Array.from(atob(item.account.data[0]), c => c.charCodeAt(0))); if (value.organization === organization) values.push(value); } } catch {}
+  return values.sort((a, b) => a.verifier.localeCompare(b.verifier));
+}
+export async function listDeliveryVerifications(cluster: ClusterMoniker, disbursement: Address) {
+  const accounts = await programAccounts(cluster); const values: DeliveryVerification[] = [];
+  for (const item of accounts) try { if (item.account.owner === PROGRAM_ID) { const value = await decodeDeliveryVerification(address(item.pubkey), Uint8Array.from(atob(item.account.data[0]), c => c.charCodeAt(0))); if (value.disbursement === disbursement) values.push(value); } } catch {}
+  return values.sort((a, b) => Number(a.verificationId - b.verificationId));
 }
 export const availableFunds = (campaign: Campaign) =>
   campaign.amountRaised - campaign.amountDisbursed - campaign.amountReserved;

@@ -147,7 +147,26 @@ pub struct DeliveryVerified {
     pub disbursement: Pubkey,
     pub verifier: Pubkey,
     pub verification_id: u64,
+    pub evidence_digest: [u8; 32],
     pub status: VerificationStatusEvent,
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct VerifierRegistered {
+    pub verifier_record: Pubkey,
+    pub organization: Pubkey,
+    pub verifier: Pubkey,
+    pub actor: Pubkey,
+    pub occurred_at: i64,
+}
+
+#[event]
+pub struct VerifierRevoked {
+    pub verifier_record: Pubkey,
+    pub organization: Pubkey,
+    pub verifier: Pubkey,
+    pub actor: Pubkey,
     pub occurred_at: i64,
 }
 

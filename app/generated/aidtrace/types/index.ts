@@ -13,4 +13,5 @@ export * from "./disbursementStatus";
 export * from "./donationSource";
 export * from "./organizationStatus";
 export * from "./organizationStatusEvent";
+export * from "./verificationStatus";
 export * from "./verificationStatusEvent";

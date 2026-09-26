@@ -129,6 +129,20 @@ impl DeliveryVerification {
     pub const SPACE: usize = 8 + 32 + 8 + 32 + 32 + 1 + 9 + 1;
 }
 
+/// A verifier is scoped to one organization and may be revoked without
+/// deleting its historical verification milestones.
+#[account]
+pub struct Verifier {
+    pub organization: Pubkey,
+    pub verifier: Pubkey,
+    pub active: bool,
+    pub bump: u8,
+}
+
+impl Verifier {
+    pub const SPACE: usize = 8 + 32 + 32 + 1 + 1;
+}
+
 #[account]
 pub struct TrustScore {
     pub subject: Pubkey,

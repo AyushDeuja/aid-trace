@@ -17,6 +17,13 @@ export async function ensureFinanceSchema() {
     CREATE TABLE IF NOT EXISTS finance_metadata_links (
       account_address text PRIMARY KEY, kind text NOT NULL CHECK(kind IN ('allocation','disbursement')),
       digest char(64) NOT NULL, uri text NOT NULL, signature text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE IF NOT EXISTS verifier_projection (
+      address text PRIMARY KEY, organization text NOT NULL, verifier text NOT NULL, active boolean NOT NULL,
+      observed_slot bigint NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE IF NOT EXISTS delivery_verification_projection (
+      address text PRIMARY KEY, disbursement text NOT NULL, verification_id text NOT NULL, verifier text NOT NULL,
+      evidence_digest char(64) NOT NULL, status text NOT NULL, verified_at_chain bigint, observed_slot bigint NOT NULL DEFAULT 0,
+      signature text, updated_at timestamptz NOT NULL DEFAULT now());
   `);
 }
 
@@ -42,7 +49,7 @@ export async function saveFinanceMetadataLink(input: {
 
 export async function financeHistory(campaign: string) {
   await ensureFinanceSchema();
-  const [allocations, disbursements] = await Promise.all([
+  const [allocations, disbursements, evidence, verifications, verifiers] = await Promise.all([
     database().query(
       `SELECT a.*, l.uri, l.signature FROM allocation_projection a LEFT JOIN finance_metadata_links l ON l.account_address=a.address AND l.digest=a.purpose_digest WHERE a.campaign=$1 ORDER BY a.allocation_id`,
       [campaign]
@@ -51,6 +58,9 @@ export async function financeHistory(campaign: string) {
       `SELECT d.*, l.uri, l.signature FROM disbursement_projection d LEFT JOIN finance_metadata_links l ON l.account_address=d.address AND l.digest=d.description_digest WHERE d.campaign=$1 ORDER BY d.disbursement_id`,
       [campaign]
     ),
+    database().query(`SELECT l.account_address, m.id, m.digest, m.filename, m.mime_type, m.byte_size, l.signature FROM evidence_links l JOIN evidence_manifests m ON m.id=l.manifest_id JOIN disbursement_projection d ON d.address=l.account_address WHERE d.campaign=$1`, [campaign]),
+    database().query(`SELECT v.* FROM delivery_verification_projection v JOIN disbursement_projection d ON d.address=v.disbursement WHERE d.campaign=$1 ORDER BY v.verification_id`, [campaign]),
+    database().query(`SELECT DISTINCT p.* FROM verifier_projection p JOIN allocation_projection a ON a.campaign=$1`, [campaign]),
   ]);
-  return { allocations: allocations.rows, disbursements: disbursements.rows };
+  return { allocations: allocations.rows, disbursements: disbursements.rows, evidence: evidence.rows, verifications: verifications.rows, verifiers: verifiers.rows };
 }
