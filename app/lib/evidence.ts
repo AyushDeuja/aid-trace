@@ -1,0 +1,11 @@
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { database } from "./organizations/db";
+
+const root = path.join(process.cwd(), "data", "evidence");
+const allowed = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const maxBytes = 5 * 1024 * 1024;
+export async function ensureEvidenceSchema() { await database().query(`CREATE TABLE IF NOT EXISTS evidence_manifests (id uuid PRIMARY KEY,digest char(64) NOT NULL,filename text NOT NULL,mime_type text NOT NULL,byte_size integer NOT NULL,uploader text NOT NULL,storage_key text NOT NULL UNIQUE,created_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS evidence_links (manifest_id uuid NOT NULL REFERENCES evidence_manifests(id),account_address text NOT NULL,digest char(64) NOT NULL,signature text NOT NULL,PRIMARY KEY(manifest_id,account_address));`); }
+export async function saveEvidence(file: File, uploader: string) { if (!allowed.has(file.type) || !file.size || file.size > maxBytes) throw new Error("Evidence must be a PDF, PNG, JPEG, or WebP under 5 MB"); const bytes=Buffer.from(await file.arrayBuffer()); const digest=createHash("sha256").update(bytes).digest("hex"); const id=randomUUID(), storageKey=randomUUID(); const filename=path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g,"_"); await mkdir(root,{recursive:true}); await writeFile(path.join(root,storageKey),bytes,{flag:"wx"}); await ensureEvidenceSchema(); await database().query(`INSERT INTO evidence_manifests(id,digest,filename,mime_type,byte_size,uploader,storage_key) VALUES($1,$2,$3,$4,$5,$6,$7)`,[id,digest,filename,file.type,file.size,uploader,storageKey]); return {uri:`aidtrace://evidence/${id}`,digest,metadata:{filename,mimeType:file.type,byteSize:file.size,uploader}}; }
+export async function evidenceById(id: string) { await ensureEvidenceSchema(); const r=await database().query("SELECT * FROM evidence_manifests WHERE id=$1",[id]); if(!r.rows[0]) throw new Error("Evidence not found"); const row=r.rows[0]; const bytes=await readFile(path.join(root,row.storage_key)); if(createHash("sha256").update(bytes).digest("hex")!==row.digest) throw new Error("Evidence digest mismatch"); return {row,bytes}; }
