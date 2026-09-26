@@ -21,6 +21,9 @@ import {
 } from "../lib/organizations/chain";
 import { listCampaigns, type Campaign } from "../lib/campaigns/chain";
 import { displaySol } from "../lib/campaigns/amount";
+import { Badge } from "../components/ui/badge";
+import { Button, buttonVariants } from "../components/ui/button";
+import { RefreshCw, ShieldCheck, WalletCards } from "lucide-react";
 
 type ListedOrganization = OrganizationAccount & {
   metadata?: { name: string } | null;
@@ -234,8 +237,7 @@ export default function OrganizationPage() {
           <label className="block text-sm">Website (optional)
             <input className="mt-1 w-full rounded border p-2" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://example.org" />
           </label>
-          <button
-            className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
+          <Button
             disabled={disabled || !name || !description}
             onClick={() => {
               let metadata: { digest: string; uri: string } | undefined;
@@ -253,7 +255,7 @@ export default function OrganizationPage() {
             }}
           >
             Register with wallet
-          </button>
+          </Button>
         </section>
       )}
 
@@ -275,25 +277,23 @@ export default function OrganizationPage() {
             </div>
             <div>
               <dt className="text-muted">Canonical status</dt>
-              <dd>{selected.status}</dd>
+              <dd className="mt-1"><Badge variant={selected.status === "Active" ? "success" : selected.status === "Closed" ? "destructive" : "warning"}>{selected.status}</Badge></dd>
             </div>
             <div>
               <dt className="text-muted">Verification</dt>
-              <dd>
+              <dd className="mt-1">
                 {selected.verified
-                  ? "Admin verified"
-                  : "Awaiting admin verification"}
+                  ? <Badge variant="success"><ShieldCheck className="mr-1 size-3" />Admin verified</Badge>
+                  : <Badge variant="warning">Awaiting admin verification</Badge>}
               </dd>
             </div>
           </dl>
-          <button className="text-sm underline" onClick={() => void refresh()}>
-            Refresh canonical state
-          </button>
+          <Button variant="outline" size="sm" onClick={() => void refresh()}><RefreshCw className="size-3.5" />Refresh canonical state</Button>
           <a
-            className="inline-flex border border-[#d8d0c2] px-3 py-2 text-sm font-bold hover:bg-[#eee7db]"
+            className={buttonVariants({ variant: "outline", className: "w-fit" })}
             href="/org/finance"
           >
-            Open finance dashboard
+            <WalletCards className="size-4" />Open finance dashboard
           </a>
           {canManage && selected.status !== "Closed" && (
             <div className="space-y-3 border-t pt-4">
@@ -312,8 +312,8 @@ export default function OrganizationPage() {
               <label className="block text-sm">Website (optional)
                 <input className="mt-1 w-full rounded border p-2" value={website} onChange={(e) => setWebsite(e.target.value)} />
               </label>
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
+              <Button
+                variant="outline"
                 disabled={disabled || !name || !description}
                 onClick={() => {
                   let metadata: { digest: string; uri: string } | undefined;
@@ -327,7 +327,7 @@ export default function OrganizationPage() {
                 }}
               >
                 Update metadata
-              </button>
+              </Button>
               <label className="block text-sm">
                 New authority wallet
                 <input
@@ -336,8 +336,8 @@ export default function OrganizationPage() {
                   onChange={(e) => setNextAuthority(e.target.value)}
                 />
               </label>
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
+              <Button
+                variant="outline"
                 disabled={disabled || !nextAuthority}
                 onClick={() =>
                   void transact(async () =>
@@ -346,12 +346,12 @@ export default function OrganizationPage() {
                 }
               >
                 Nominate authority
-              </button>
+              </Button>
             </div>
           )}
           {selected.pendingAuthority === walletAddress && (
-            <button
-              className="rounded border px-3 py-2 disabled:opacity-50"
+            <Button
+              variant="outline"
               disabled={disabled}
               onClick={() =>
                 void transact(async () =>
@@ -360,7 +360,7 @@ export default function OrganizationPage() {
               }
             >
               Accept authority
-            </button>
+            </Button>
           )}
           {isAdmin && selected.status !== "Closed" && (
             <div className="space-x-2 space-y-2 border-t pt-4">

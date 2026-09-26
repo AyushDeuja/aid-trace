@@ -140,3 +140,69 @@
     animation: none;
   }
 }
+
+/* Landing-page live fund-path panel */
+section[aria-label="Live fund path"] {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  border-color: rgb(255 255 255 / 0.2) !important;
+  background: rgb(17 14 10 / 0.55) !important;
+  box-shadow: 0 24px 50px rgb(0 0 0 / 0.25);
+  backdrop-filter: blur(20px);
+}
+
+section[aria-label="Live fund path"]::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  content: "";
+  background: rgb(255 255 255 / 0.25);
+}
+
+section[aria-label="Live fund path"] > div:first-child > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgb(103 232 249 / 0.35);
+  border-radius: 9999px;
+  background: rgb(6 182 212 / 0.14);
+  color: rgb(165 243 252);
+}
+
+section[aria-label="Live fund path"] > ol {
+  position: relative;
+  gap: 0;
+}
+
+section[aria-label="Live fund path"] > ol::before {
+  position: absolute;
+  top: 10px;
+  right: 10%;
+  left: 10%;
+  height: 1px;
+  content: "";
+  background: #ef4444;
+}
+
+section[aria-label="Live fund path"] > ol > li::before {
+  z-index: 1;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-color: rgb(255 255 255 / 0.25);
+  background: rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(8px);
+}
+
+section[aria-label="Live fund path"] > ol > li > span:first-child {
+  position: relative;
+  z-index: 2;
+  padding-top: 0.05rem;
+  color: white;
+}
+
+section[aria-label="Live fund path"] > ol > li {
+  padding-top: 3.25rem;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.6);
+}
