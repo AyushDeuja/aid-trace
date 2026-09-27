@@ -2,13 +2,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { address } from "@solana/kit";
-import { useCluster } from "../components/cluster-context";
-import { WalletButton } from "../components/wallet-button";
-import { useWallet } from "../lib/wallet/context";
-import { useSendTransaction } from "../lib/hooks/use-send-transaction";
-import { fetchOrganization, organizationPda } from "../lib/organizations/chain";
-import { createCampaignIx, listCampaigns, type Campaign } from "../lib/campaigns/chain";
-import { parseSolAmount, displaySol } from "../lib/campaigns/amount";
+import { useCluster } from "../../components/cluster-context";
+import { WalletButton } from "../../components/wallet-button";
+import { useWallet } from "../../lib/wallet/context";
+import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
+import { fetchOrganization, organizationPda } from "../../lib/organizations/chain";
+import { createCampaignIx, listCampaigns, type Campaign } from "../../lib/campaigns/chain";
+import { parseSolAmount, displaySol } from "../../lib/campaigns/amount";
 
 type Item = { campaign: Campaign; title: string; description: string; disasterType: string; location: string };
 function Placeholder() { return <div className="relative aspect-[16/10] overflow-hidden bg-[#d9d1c2]"><div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,.52),transparent_48%,rgba(48,38,28,.16))]" /><span className="absolute left-3 top-3 border border-emerald-700/25 bg-emerald-100/90 px-2 py-1 text-xs font-bold text-emerald-900">✓ Active</span><span className="absolute bottom-3 right-3 bg-white/70 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#625a4e]">Dummy image</span></div>; }

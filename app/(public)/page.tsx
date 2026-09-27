@@ -3,16 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { WalletButton } from "./components/wallet-button";
-import { ClusterSelect } from "./components/cluster-select";
-import { ThemeToggle } from "./components/theme-toggle";
-import { useCluster } from "./components/cluster-context";
-import { displaySol } from "./lib/campaigns/amount";
-import { listCampaigns, type Campaign } from "./lib/campaigns/chain";
-import { FieldNotesMarquee } from "./components/field-notes-marquee";
-import { OrganizationsMarquee } from "./components/organizations-marquee";
-import { Badge } from "./components/ui/badge";
-import { buttonVariants } from "./components/ui/button";
+import { WalletButton } from "../components/wallet-button";
+import { ClusterSelect } from "../components/cluster-select";
+import { ThemeToggle } from "../components/theme-toggle";
+import { useCluster } from "../components/cluster-context";
+import { displaySol } from "../lib/campaigns/amount";
+import { listCampaigns, type Campaign } from "../lib/campaigns/chain";
+import { FieldNotesMarquee } from "../components/field-notes-marquee";
+import { OrganizationsMarquee } from "../components/organizations-marquee";
+import { Badge } from "../components/ui/badge";
+import { buttonVariants } from "../components/ui/button";
 import { ArrowRight } from "lucide-react";
 
 type CampaignCard = { campaign: Campaign; title: string; description: string };
@@ -61,6 +61,6 @@ export default function Home() {
       <OrganizationsMarquee />
       <section id="how-it-works" className="bg-red-700 text-white"><div className="mx-auto grid max-w-[1400px] divide-y divide-white/25 md:grid-cols-3 md:divide-x md:divide-y-0"><article className="p-8"><h2 className="font-serif text-2xl">Durable truth</h2><p className="mt-3 text-white/80">Donations, allocations and delivery records settle on Solana.</p></article><article className="p-8"><h2 className="font-serif text-2xl">Realtime response</h2><p className="mt-3 text-white/80">Live counters can update without obscuring canonical totals.</p></article><article className="p-8"><h2 className="font-serif text-2xl">Accountable intelligence</h2><p className="mt-3 text-white/80">AI explains risk signals. Humans approve consequential actions.</p></article></div></section>
     </main>
-    <footer className="bg-[#1c1915] text-[#fffdf8]"><div className="mx-auto flex max-w-[1400px] flex-wrap justify-between gap-6 px-5 py-10 md:px-8"><div><p className="font-serif text-xl">AidTrace</p><p className="mt-2 text-sm text-white/60">A frontend demonstration using sample Devnet activity.</p></div><div className="flex gap-5 text-sm"><Link href="/campaigns">Campaigns</Link><a href="#how-it-works">How it works</a><Link href="/org">Organization view</Link></div></div></footer>
+    <footer className="bg-[#1c1915] text-[#fffdf8]"><div className="mx-auto flex max-w-[1400px] flex-wrap justify-between gap-6 px-5 py-10 md:px-8"><div><p className="font-serif text-xl">AidTrace</p><p className="mt-2 text-sm text-white/60">A frontend demonstration using sample Devnet activity.</p></div><div className="flex gap-5 text-sm"><Link href="/campaigns">Campaigns</Link><a href="#how-it-works">How it works</a><Link href="/organizations">Organizations</Link></div></div></footer>
   </div>;
 }

@@ -3,15 +3,15 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { address } from "@solana/kit";
-import { useCluster } from "../../components/cluster-context";
-import { WalletButton } from "../../components/wallet-button";
-import { useWallet } from "../../lib/wallet/context";
-import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
+import { useCluster } from "../../../components/cluster-context";
+import { WalletButton } from "../../../components/wallet-button";
+import { useWallet } from "../../../lib/wallet/context";
+import { useSendTransaction } from "../../../lib/hooks/use-send-transaction";
 import {
   fetchAdmin,
   fetchOrganization,
   rpcCall,
-} from "../../lib/organizations/chain";
+} from "../../../lib/organizations/chain";
 import {
   donateIx,
   fetchCampaign,
@@ -19,8 +19,8 @@ import {
   submitCampaignIx,
   updateCampaignIx,
   type Campaign,
-} from "../../lib/campaigns/chain";
-import { displaySol, parseSolAmount } from "../../lib/campaigns/amount";
+} from "../../../lib/campaigns/chain";
+import { displaySol, parseSolAmount } from "../../../lib/campaigns/amount";
 
 export default function CampaignDetailPage() {
   const params = useParams<{ address: string }>();
