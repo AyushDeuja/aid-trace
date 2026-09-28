@@ -22,6 +22,7 @@ import {
   listAllocations,
   listDisbursements,
   listDeliveryVerifications,
+  listVerifierRecordsForWallet,
   listVerifiers,
   recordDisbursementIx,
   registerVerifierIx,
@@ -93,7 +94,12 @@ export default function FinancePage() {
 
   const refresh = useCallback(async () => {
     if (!supported || !walletAddress) return;
-    const org = await fetchOrganization(cluster, requestedOrganization ? address(requestedOrganization) : await organizationPda(address(walletAddress)));
+    let org = await fetchOrganization(cluster, requestedOrganization ? address(requestedOrganization) : await organizationPda(address(walletAddress)));
+    if (!org && !requestedOrganization) {
+      const records = await listVerifierRecordsForWallet(cluster, address(walletAddress));
+      if (records.length === 1) org = await fetchOrganization(cluster, records[0].organization);
+      if (records.length > 1) setMessage("This verifier is registered for multiple organizations. Open an organization and use its Finance button to choose one.");
+    }
     if (!org) {
       setCampaigns([]);
       setSelected(null);
@@ -445,7 +451,7 @@ export default function FinancePage() {
           Connect the active organization authority wallet to manage funds.
         </p>
       )}
-      {requestedOrganization && <p className="text-sm text-muted">Viewing organization {requestedOrganization}. This lets a registered verifier use this dashboard while connected with their own wallet.</p>}
+      {(requestedOrganization || (selected && !campaigns.some((campaign) => campaign.authority === walletAddress))) && <p className="text-sm text-muted">Viewing the selected organization. Registered verifier wallets can review and decide on its uploaded evidence.</p>}
       {walletAddress && !selected && (
         <p className="rounded border p-4">
           No campaigns owned by this wallet were found.

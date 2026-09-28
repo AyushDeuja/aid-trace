@@ -58,7 +58,7 @@ export async function financeHistory(campaign: string) {
       `SELECT d.*, l.uri, l.signature FROM disbursement_projection d LEFT JOIN finance_metadata_links l ON l.account_address=d.address AND l.digest=d.description_digest WHERE d.campaign=$1 ORDER BY d.disbursement_id`,
       [campaign]
     ),
-    database().query(`SELECT l.account_address, m.id, m.digest, m.filename, m.mime_type, m.byte_size, l.signature FROM evidence_links l JOIN evidence_manifests m ON m.id=l.manifest_id JOIN disbursement_projection d ON d.address=l.account_address WHERE d.campaign=$1`, [campaign]),
+    database().query(`SELECT DISTINCT ON (l.account_address) l.account_address, ('aidtrace://evidence/' || m.id::text) AS uri, m.id, m.digest, m.filename, m.mime_type, m.byte_size, l.signature FROM evidence_links l JOIN evidence_manifests m ON m.id=l.manifest_id JOIN disbursement_projection d ON d.address=l.account_address WHERE d.campaign=$1 ORDER BY l.account_address, m.created_at DESC`, [campaign]),
     database().query(`SELECT v.* FROM delivery_verification_projection v JOIN disbursement_projection d ON d.address=v.disbursement WHERE d.campaign=$1 ORDER BY v.verification_id`, [campaign]),
     database().query(`SELECT DISTINCT p.* FROM verifier_projection p JOIN allocation_projection a ON a.campaign=$1`, [campaign]),
   ]);

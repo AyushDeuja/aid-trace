@@ -391,6 +391,12 @@ export async function listVerifiers(cluster: ClusterMoniker, organization: Addre
   for (const item of accounts) try { if (item.account.owner === PROGRAM_ID) { const value = await decodeVerifier(address(item.pubkey), Uint8Array.from(atob(item.account.data[0]), c => c.charCodeAt(0))); if (value.organization === organization) values.push(value); } } catch {}
   return values.sort((a, b) => a.verifier.localeCompare(b.verifier));
 }
+/** Finds organizations where this wallet is an active verifier, for dashboard navigation. */
+export async function listVerifierRecordsForWallet(cluster: ClusterMoniker, wallet: Address) {
+  const accounts = await programAccounts(cluster); const values: Verifier[] = [];
+  for (const item of accounts) try { if (item.account.owner === PROGRAM_ID) { const value = await decodeVerifier(address(item.pubkey), Uint8Array.from(atob(item.account.data[0]), c => c.charCodeAt(0))); if (value.active && value.verifier === wallet) values.push(value); } } catch {}
+  return values;
+}
 export async function listDeliveryVerifications(cluster: ClusterMoniker, disbursement: Address) {
   const accounts = await programAccounts(cluster); const values: DeliveryVerification[] = [];
   for (const item of accounts) try { if (item.account.owner === PROGRAM_ID) { const value = await decodeDeliveryVerification(address(item.pubkey), Uint8Array.from(atob(item.account.data[0]), c => c.charCodeAt(0))); if (value.disbursement === disbursement) values.push(value); } } catch {}
