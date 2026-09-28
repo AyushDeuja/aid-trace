@@ -46,5 +46,8 @@ next-env.d.ts
 /anchor/target/
 /target/
 
+# Local evidence and PostgreSQL backup archives
+/data/
+
 # solana local validator
 test-ledger/

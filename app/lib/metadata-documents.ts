@@ -20,21 +20,8 @@ export type MetadataDocument = {
 const uriPattern = /^aidtrace:\/\/(organization|campaign|allocation|disbursement)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 export async function ensureMetadataSchema() {
-  await database().query(`
-    CREATE TABLE IF NOT EXISTS metadata_documents (
-      id uuid PRIMARY KEY,
-      kind text NOT NULL CHECK (kind IN ('organization', 'campaign', 'allocation', 'disbursement')),
-      canonical_json text NOT NULL,
-      digest char(64) NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  // Existing local databases were created before finance metadata kinds existed.
-  await database().query(`
-    ALTER TABLE metadata_documents DROP CONSTRAINT IF EXISTS metadata_documents_kind_check;
-    ALTER TABLE metadata_documents ADD CONSTRAINT metadata_documents_kind_check
-      CHECK (kind IN ('organization', 'campaign', 'allocation', 'disbursement'));
-  `);
+  // Schema ownership belongs to reviewed SQL migrations (`npm run db:migrate`).
+  await database().query("SELECT 1 FROM schema_migrations LIMIT 1");
 }
 
 function text(value: unknown, field: string, max: number) {

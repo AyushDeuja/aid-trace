@@ -35,6 +35,15 @@ import {
 } from "../../lib/finance/chain";
 
 const LAMPORTS = 1_000_000_000n;
+type EvidenceAttachment = {
+  uri: string;
+  digest: string;
+  account_address?: string;
+  metadata?: { filename: string; mimeType: string; byteSize: number };
+  filename?: string;
+  mime_type?: string;
+  byte_size?: string;
+};
 function sol(value: bigint) {
   return `${(Number(value) / Number(LAMPORTS)).toFixed(4)} SOL`;
 }
@@ -66,7 +75,7 @@ export default function FinancePage() {
   const [history, setHistory] = useState<{
     allocations: Array<Record<string, string>>;
     disbursements: Array<Record<string, string>>;
-    evidence?: Array<Record<string, string>>;
+    evidence?: EvidenceAttachment[];
     verifications?: Array<Record<string, string>>;
   } | null>(null);
   const [recipient, setRecipient] = useState("");
@@ -81,11 +90,7 @@ export default function FinancePage() {
   const [evidence, setEvidence] = useState<
     Record<
       string,
-      {
-        uri: string;
-        digest: string;
-        metadata: { filename: string; mimeType: string; byteSize: number };
-      }
+      EvidenceAttachment
     >
   >({});
   const [message, setMessage] = useState("");
@@ -145,11 +150,16 @@ export default function FinancePage() {
     }
   }, [cluster, requestedOrganization, selected?.address, supported, walletAddress]);
   useEffect(() => {
-    void refresh().catch((error) =>
-      setMessage(
-        error instanceof Error ? error.message : "Could not load finance data"
-      )
-    );
+    // Start asynchronous chain reads after this render commits. This avoids a
+    // synchronous state cascade while retaining refresh-on-wallet/network change.
+    const timer = window.setTimeout(() => {
+      void refresh().catch((error) =>
+        setMessage(
+          error instanceof Error ? error.message : "Could not load finance data"
+        )
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [refresh]);
   const canManage =
     !!selected &&
@@ -197,7 +207,7 @@ export default function FinancePage() {
       ),
     [history]
   );
-  const evidenceFor = (disbursement: Address): any =>
+  const evidenceFor = (disbursement: Address): EvidenceAttachment | undefined =>
     evidence[disbursement] ||
     (history?.evidence || []).find(
       (item) => item.account_address === disbursement
@@ -775,7 +785,7 @@ export default function FinancePage() {
                           </p>
                           <a
                             className="underline"
-                            href={`/api/evidence/${encodeURIComponent((attached.uri || "").split("/").pop() || attached.id)}/file`}
+                            href={`/api/evidence/${encodeURIComponent(attached.uri.split("/").pop() || "")}/file`}
                             target="_blank"
                             rel="noreferrer"
                           >

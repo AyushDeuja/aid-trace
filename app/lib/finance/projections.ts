@@ -1,30 +1,16 @@
 import { database } from "../organizations/db";
 import { parseMetadataUri, type MetadataKind } from "../metadata-documents";
 
+const programId = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M";
+const cluster = process.env.AIDTRACE_CLUSTER || (
+  (process.env.SOLANA_RPC_URL || "").includes("localhost") ||
+  (process.env.SOLANA_RPC_URL || "").includes("127.0.0.1")
+    ? "localnet"
+    : "devnet"
+);
+
 export async function ensureFinanceSchema() {
-  await database().query(`
-    CREATE TABLE IF NOT EXISTS allocation_projection (
-      address text PRIMARY KEY, campaign text NOT NULL, allocation_id text NOT NULL,
-      recipient text NOT NULL, amount text NOT NULL, spent text NOT NULL, purpose_digest char(64) NOT NULL,
-      status text NOT NULL, created_at_chain bigint NOT NULL, observed_slot bigint NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE IF NOT EXISTS disbursement_projection (
-      address text PRIMARY KEY, allocation text NOT NULL, campaign text NOT NULL, disbursement_id text NOT NULL,
-      recipient text NOT NULL, amount text NOT NULL, description_digest char(64) NOT NULL, authority text NOT NULL,
-      status text NOT NULL, created_at_chain bigint NOT NULL, observed_slot bigint NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE IF NOT EXISTS finance_events (
-      signature text NOT NULL, log_index integer NOT NULL, event_name text NOT NULL,
-      payload_base64 text NOT NULL, slot bigint NOT NULL, PRIMARY KEY(signature, log_index));
-    CREATE TABLE IF NOT EXISTS finance_metadata_links (
-      account_address text PRIMARY KEY, kind text NOT NULL CHECK(kind IN ('allocation','disbursement')),
-      digest char(64) NOT NULL, uri text NOT NULL, signature text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE IF NOT EXISTS verifier_projection (
-      address text PRIMARY KEY, organization text NOT NULL, verifier text NOT NULL, active boolean NOT NULL,
-      observed_slot bigint NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE IF NOT EXISTS delivery_verification_projection (
-      address text PRIMARY KEY, disbursement text NOT NULL, verification_id text NOT NULL, verifier text NOT NULL,
-      evidence_digest char(64) NOT NULL, status text NOT NULL, verified_at_chain bigint, observed_slot bigint NOT NULL DEFAULT 0,
-      signature text, updated_at timestamptz NOT NULL DEFAULT now());
-  `);
+  await database().query("SELECT 1 FROM schema_migrations LIMIT 1");
 }
 
 export async function saveFinanceMetadataLink(input: {
@@ -44,6 +30,12 @@ export async function saveFinanceMetadataLink(input: {
     `INSERT INTO finance_metadata_links(account_address,kind,digest,uri,signature)
     VALUES($1,$2,$3,$4,$5) ON CONFLICT(account_address) DO NOTHING`,
     [input.address, input.kind, input.digest, input.uri, input.signature]
+  );
+  await database().query(
+    `INSERT INTO chain_metadata_links(cluster,program_id,account_address,kind,digest,uri,signature)
+     VALUES($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT(cluster,program_id,account_address,kind) DO NOTHING`,
+    [cluster, programId, input.address, input.kind, input.digest, input.uri, input.signature]
   );
 }
 

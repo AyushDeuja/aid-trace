@@ -54,6 +54,45 @@ created `anchor/`.
 npm run dev
 ```
 
+## PostgreSQL migrations, indexing, and backups
+
+PostgreSQL is the application's immutable metadata and indexed-audit store. Solana remains the source of truth for SOL balances and financial state. Before starting the app or indexer against a new database, load `.env` and apply reviewed migrations:
+
+```bash
+set -a && source .env && set +a
+npm run db:migrate
+```
+
+Run the finalized-ledger indexer on demand after chain activity:
+
+```bash
+npm run index:chain
+```
+
+`index:organizations` and `index:finance` remain supported compatibility commands and invoke the same indexer. The indexer records an idempotent event key of cluster, program, transaction signature, and event-log index; it also keeps a durable checkpoint and reconciles finalized program accounts.
+
+Create an append-only local archive of immutable metadata documents with:
+
+```bash
+npm run backup:metadata
+```
+
+Archives and SHA-256 checksum files are written under `data/backups/postgres/`, which is intentionally gitignored. `pg_dump` and `pg_restore` must be installed in the environment running the command. Back up `data/evidence/` separately: metadata archives do not include local evidence file bytes.
+
+Verify an archive checksum and inspect it before restoring:
+
+```bash
+sha256sum -c data/backups/postgres/metadata-documents-<timestamp>.dump.sha256
+pg_restore --list data/backups/postgres/metadata-documents-<timestamp>.dump
+```
+
+Restore only into an intentionally chosen PostgreSQL database (never over a
+production database without a reviewed recovery plan):
+
+```bash
+pg_restore --dbname="$DATABASE_URL" data/backups/postgres/metadata-documents-<timestamp>.dump
+```
+
 The default browser network is Devnet. Start from `.env.example` for local
 configuration; never commit secrets or put secrets in public environment values.
 
