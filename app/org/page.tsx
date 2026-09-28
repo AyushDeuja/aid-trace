@@ -272,9 +272,9 @@ export default function OrganizationPage() {
           </button>
           <a
             className="inline-flex rounded border px-3 py-2 text-sm hover:bg-muted"
-            href="/org/finance"
+            href={`/org/finance?organization=${encodeURIComponent(selected.address)}`}
           >
-            Open finance dashboard
+            Open finance & verification
           </a>
           {canManage && selected.status !== "Closed" && (
             <div className="space-y-3 border-t pt-4">

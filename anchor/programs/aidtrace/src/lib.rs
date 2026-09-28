@@ -583,6 +583,71 @@ pub mod aidtrace {
         });
         Ok(())
     }
+
+    pub fn register_verifier(ctx: Context<RegisterVerifier>, verifier: Pubkey) -> Result<()> {
+        require!(verifier != Pubkey::default(), AidTraceError::InvalidInput);
+        let record = &mut ctx.accounts.verifier_record;
+        record.organization = ctx.accounts.organization.key();
+        record.verifier = verifier;
+        record.active = true;
+        record.bump = ctx.bumps.verifier_record;
+        emit!(VerifierRegistered {
+            verifier_record: record.key(), organization: record.organization, verifier,
+            actor: ctx.accounts.authority.key(), occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn revoke_verifier(ctx: Context<RevokeVerifier>) -> Result<()> {
+        let record = &mut ctx.accounts.verifier_record;
+        require!(record.active, AidTraceError::InvalidStatusTransition);
+        record.active = false;
+        emit!(VerifierRevoked {
+            verifier_record: record.key(), organization: record.organization,
+            verifier: record.verifier, actor: ctx.accounts.authority.key(),
+            occurred_at: Clock::get()?.unix_timestamp,
+        });
+        Ok(())
+    }
+
+    pub fn verify_delivery(
+        ctx: Context<VerifyDelivery>,
+        verification_id: u64,
+        evidence_digest: [u8; 32],
+        status: VerificationStatus,
+    ) -> Result<()> {
+        require!(ctx.accounts.organization.verified && ctx.accounts.organization.status == OrganizationStatus::Active, AidTraceError::OrganizationNotActive);
+        require!(ctx.accounts.verifier_record.active, AidTraceError::Unauthorized);
+        require!(verification_id == ctx.accounts.disbursement.next_delivery_verification_id, AidTraceError::InvalidSequence);
+        require!(matches!(status, VerificationStatus::Verified | VerificationStatus::Disputed | VerificationStatus::Rejected), AidTraceError::InvalidStatusTransition);
+        validate_digest(&evidence_digest)?;
+        let now = Clock::get()?.unix_timestamp;
+        let verification = &mut ctx.accounts.verification;
+        verification.disbursement = ctx.accounts.disbursement.key();
+        verification.verification_id = verification_id;
+        verification.verifier = ctx.accounts.verifier.key();
+        verification.evidence_digest = evidence_digest;
+        verification.status = status;
+        verification.verified_at = Some(now);
+        verification.bump = ctx.bumps.verification;
+        let disbursement = &mut ctx.accounts.disbursement;
+        disbursement.next_delivery_verification_id = disbursement.next_delivery_verification_id.checked_add(1).ok_or(AidTraceError::CounterExhausted)?;
+        disbursement.status = match status {
+            VerificationStatus::Verified => DisbursementStatus::Verified,
+            VerificationStatus::Disputed => DisbursementStatus::Disputed,
+            VerificationStatus::Rejected => DisbursementStatus::Rejected,
+            VerificationStatus::Pending => return err!(AidTraceError::InvalidStatusTransition),
+        };
+        if status == VerificationStatus::Verified {
+            ctx.accounts.organization.verified_delivery_count = ctx.accounts.organization.verified_delivery_count.checked_add(1).ok_or(AidTraceError::CounterExhausted)?;
+        }
+        emit!(DeliveryVerified {
+            verification: verification.key(), disbursement: verification.disbursement,
+            verifier: verification.verifier, verification_id, evidence_digest,
+            status: verification_status_event(status), occurred_at: now,
+        });
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -755,6 +820,46 @@ pub struct RecordDisbursement<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+#[instruction(verifier: Pubkey)]
+pub struct RegisterVerifier<'info> {
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump, has_one = authority @ AidTraceError::Unauthorized)]
+    pub organization: Box<Account<'info, Organization>>,
+    // Re-registration is intentional: only the organization authority can reactivate a revoked record.
+    #[account(init_if_needed, payer = authority, space = Verifier::SPACE, seeds = [VERIFIER_SEED, organization.key().as_ref(), verifier.as_ref()], bump)]
+    pub verifier_record: Account<'info, Verifier>,
+    #[account(mut)] pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RevokeVerifier<'info> {
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump, has_one = authority @ AidTraceError::Unauthorized)]
+    pub organization: Account<'info, Organization>,
+    #[account(mut, seeds = [VERIFIER_SEED, organization.key().as_ref(), verifier_record.verifier.as_ref()], bump = verifier_record.bump, has_one = organization)]
+    pub verifier_record: Account<'info, Verifier>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(verification_id: u64)]
+pub struct VerifyDelivery<'info> {
+    #[account(mut, seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Box<Account<'info, Organization>>,
+    #[account(seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(seeds = [ALLOCATION_SEED, campaign.key().as_ref(), &allocation.allocation_id.to_le_bytes()], bump = allocation.bump, has_one = campaign)]
+    pub allocation: Box<Account<'info, Allocation>>,
+    #[account(mut, seeds = [DISBURSEMENT_SEED, allocation.key().as_ref(), &disbursement.disbursement_id.to_le_bytes()], bump = disbursement.bump, has_one = campaign, has_one = allocation)]
+    pub disbursement: Box<Account<'info, Disbursement>>,
+    #[account(seeds = [VERIFIER_SEED, organization.key().as_ref(), verifier.key().as_ref()], bump = verifier_record.bump, has_one = organization, has_one = verifier @ AidTraceError::Unauthorized)]
+    pub verifier_record: Box<Account<'info, Verifier>>,
+    #[account(init, payer = verifier, space = DeliveryVerification::SPACE, seeds = [DELIVERY_VERIFICATION_SEED, disbursement.key().as_ref(), &verification_id.to_le_bytes()], bump)]
+    pub verification: Box<Account<'info, DeliveryVerification>>,
+    #[account(mut)] pub verifier: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 fn campaign_status_event(status: CampaignStatus) -> CampaignStatusEvent {
     match status {
         CampaignStatus::Draft => CampaignStatusEvent::Draft,
@@ -762,6 +867,15 @@ fn campaign_status_event(status: CampaignStatus) -> CampaignStatusEvent {
         CampaignStatus::Active => CampaignStatusEvent::Active,
         CampaignStatus::Paused => CampaignStatusEvent::Paused,
         CampaignStatus::Closed => CampaignStatusEvent::Closed,
+    }
+}
+
+fn verification_status_event(status: VerificationStatus) -> VerificationStatusEvent {
+    match status {
+        VerificationStatus::Pending => VerificationStatusEvent::Pending,
+        VerificationStatus::Verified => VerificationStatusEvent::Verified,
+        VerificationStatus::Disputed => VerificationStatusEvent::Disputed,
+        VerificationStatus::Rejected => VerificationStatusEvent::Rejected,
     }
 }
 

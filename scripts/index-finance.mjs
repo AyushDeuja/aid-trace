@@ -8,12 +8,19 @@ if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const decodeAddress = getAddressDecoder();
 let id = 0;
+const sleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+const eventScanLimit = Number(process.env.FINANCE_EVENT_SCAN_LIMIT || 100);
+let lastRpcAt = 0;
 const disc = (name) =>
   createHash("sha256").update(`account:${name}`).digest().subarray(0, 8);
 const eventNames = [
   "AllocationCreated",
   "AllocationCancelled",
   "DisbursementRecorded",
+  "VerifierRegistered",
+  "VerifierRevoked",
+  "DeliveryVerified",
 ];
 const eventDisc = new Map(
   eventNames.map((name) => [
@@ -26,19 +33,33 @@ const eventDisc = new Map(
   ])
 );
 async function rpc(method, params) {
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }),
-  });
-  const body = await response.json();
-  if (!response.ok || body.error)
-    throw new Error(body.error?.message || `RPC HTTP ${response.status}`);
-  return body.result;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const wait = Math.max(0, 300 - (Date.now() - lastRpcAt));
+    if (wait) await sleep(wait);
+    lastRpcAt = Date.now();
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }),
+    });
+    const body = await response.json();
+    const message = body.error?.message || `RPC HTTP ${response.status}`;
+    if (response.ok && !body.error) return body.result;
+    if (response.status !== 429 && !/too many requests/i.test(message))
+      throw new Error(message);
+    const retryAfterHeader = response.headers.get("retry-after");
+    const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+    await sleep(
+      Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * 2 ** attempt
+    );
+  }
+  throw new Error(
+    "Devnet RPC rate limit persisted. Wait one minute and rerun the indexer."
+  );
 }
 async function setup() {
   await pool.query(
-    `CREATE TABLE IF NOT EXISTS allocation_projection (address text PRIMARY KEY,campaign text NOT NULL,allocation_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,spent text NOT NULL,purpose_digest char(64) NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS disbursement_projection (address text PRIMARY KEY,allocation text NOT NULL,campaign text NOT NULL,disbursement_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,description_digest char(64) NOT NULL,authority text NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS finance_events (signature text NOT NULL,log_index integer NOT NULL,event_name text NOT NULL,payload_base64 text NOT NULL,slot bigint NOT NULL,PRIMARY KEY(signature,log_index));`
+    `CREATE TABLE IF NOT EXISTS allocation_projection (address text PRIMARY KEY,campaign text NOT NULL,allocation_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,spent text NOT NULL,purpose_digest char(64) NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS disbursement_projection (address text PRIMARY KEY,allocation text NOT NULL,campaign text NOT NULL,disbursement_id text NOT NULL,recipient text NOT NULL,amount text NOT NULL,description_digest char(64) NOT NULL,authority text NOT NULL,status text NOT NULL,created_at_chain bigint NOT NULL,observed_slot bigint NOT NULL,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS finance_events (signature text NOT NULL,log_index integer NOT NULL,event_name text NOT NULL,payload_base64 text NOT NULL,slot bigint NOT NULL,PRIMARY KEY(signature,log_index)); CREATE TABLE IF NOT EXISTS verifier_projection(address text PRIMARY KEY,organization text NOT NULL,verifier text NOT NULL,active boolean NOT NULL,observed_slot bigint NOT NULL DEFAULT 0,updated_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS delivery_verification_projection(address text PRIMARY KEY,disbursement text NOT NULL,verification_id text NOT NULL,verifier text NOT NULL,evidence_digest char(64) NOT NULL,status text NOT NULL,verified_at_chain bigint,observed_slot bigint NOT NULL DEFAULT 0,signature text,updated_at timestamptz NOT NULL DEFAULT now());`
   );
 }
 const u64 = (b, o) => b.readBigUInt64LE(o).toString();
@@ -92,12 +113,38 @@ async function syncAccounts() {
         ]
       );
     }
+    if (b.length === 74 && b.subarray(0, 8).equals(disc("Verifier"))) {
+      await pool.query(
+        `INSERT INTO verifier_projection(address,organization,verifier,active,observed_slot) VALUES($1,$2,$3,$4,$5) ON CONFLICT(address) DO UPDATE SET active=EXCLUDED.active,observed_slot=EXCLUDED.observed_slot,updated_at=now() WHERE verifier_projection.observed_slot<=EXCLUDED.observed_slot`,
+        [item.pubkey, key(b, 8), key(b, 40), b[72] === 1, slot]
+      );
+    }
+    if (
+      b.length === 123 &&
+      b.subarray(0, 8).equals(disc("DeliveryVerification"))
+    ) {
+      const status = ["Pending", "Verified", "Disputed", "Rejected"][b[112]];
+      if (!status || status === "Pending") continue;
+      await pool.query(
+        `INSERT INTO delivery_verification_projection(address,disbursement,verification_id,verifier,evidence_digest,status,verified_at_chain,observed_slot) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(address) DO UPDATE SET observed_slot=EXCLUDED.observed_slot,updated_at=now() WHERE delivery_verification_projection.observed_slot<=EXCLUDED.observed_slot`,
+        [
+          item.pubkey,
+          key(b, 8),
+          u64(b, 40),
+          key(b, 48),
+          b.subarray(80, 112).toString("hex"),
+          status,
+          b[113] === 1 ? i64(b, 114) : null,
+          slot,
+        ]
+      );
+    }
   }
 }
 async function syncEvents() {
   const signatures = await rpc("getSignaturesForAddress", [
     program,
-    { limit: 500, commitment: "confirmed" },
+    { limit: eventScanLimit, commitment: "confirmed" },
   ]);
   for (const entry of signatures.reverse()) {
     if (entry.err) continue;
@@ -135,12 +182,18 @@ const [
   {
     rows: [e],
   },
+  {
+    rows: [v],
+  },
 ] = await Promise.all([
   pool.query("SELECT count(*)::int AS count FROM allocation_projection"),
   pool.query("SELECT count(*)::int AS count FROM disbursement_projection"),
   pool.query("SELECT count(*)::int AS count FROM finance_events"),
+  pool.query(
+    "SELECT count(*)::int AS count FROM delivery_verification_projection"
+  ),
 ]);
 console.log(
-  `Indexed ${a.count} allocations, ${d.count} disbursements, ${e.count} finance events`
+  `Indexed ${a.count} allocations, ${d.count} disbursements, ${v.count} delivery verifications, ${e.count} finance events`
 );
 await pool.end();

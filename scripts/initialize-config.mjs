@@ -20,8 +20,14 @@ import path from "node:path";
 
 const PROGRAM_ID = address("FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
-const rpc = createSolanaRpc("http://127.0.0.1:8899");
-const rpcSubscriptions = createSolanaRpcSubscriptions("ws://127.0.0.1:8900");
+// const rpc = createSolanaRpc("http://127.0.0.1:8899");
+// const rpcSubscriptions = createSolanaRpcSubscriptions("ws://127.0.0.1:8900");
+
+const rpc = createSolanaRpc("https://api.devnet.solana.com");
+const rpcSubscriptions = createSolanaRpcSubscriptions(
+  "wss://api.devnet.solana.com"
+);
+
 const walletPath = path.join(os.homedir(), ".config", "solana", "id.json");
 
 if (!fs.existsSync(walletPath))

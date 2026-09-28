@@ -21,4 +21,4 @@ custom-panic = []
 idl-build = ["anchor-lang/idl-build"]
 
 [dependencies]
-anchor-lang = "=1.1.1"
+anchor-lang = { version = "=1.1.1", features = ["init-if-needed"] }
