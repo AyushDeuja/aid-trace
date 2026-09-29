@@ -7,11 +7,20 @@ if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const migrationsDir = path.join(process.cwd(), "db", "migrations");
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 await pool.query("CREATE TABLE IF NOT EXISTS schema_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
+const hash = (value) => createHash("sha256").update(value).digest("hex");
 const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
 for (const file of files) {
-  const sql = await readFile(path.join(migrationsDir, file), "utf8");
-  const id = `${file}:${createHash("sha256").update(sql).digest("hex")}`;
-  const existing = await pool.query("SELECT 1 FROM schema_migrations WHERE id=$1", [id]);
+  const rawSql = await readFile(path.join(migrationsDir, file), "utf8");
+  // A migration's meaning must not change merely because Git/WSL converted
+  // line endings. Accept historical LF/CRLF hashes, but reject other edits.
+  const sql = rawSql.replace(/\r\n/g, "\n");
+  const ids = [
+    `${file}:${hash(rawSql)}`,
+    `${file}:${hash(sql)}`,
+    `${file}:${hash(sql.replace(/\n/g, "\r\n"))}`,
+  ];
+  const id = `${file}:${hash(sql)}`;
+  const existing = await pool.query("SELECT 1 FROM schema_migrations WHERE id = ANY($1::text[])", [ids]);
   if (existing.rowCount) continue;
   const sameFile = await pool.query("SELECT id FROM schema_migrations WHERE id LIKE $1", [`${file}:%`]);
   if (sameFile.rowCount) throw new Error(`Migration ${file} was modified after being applied`);

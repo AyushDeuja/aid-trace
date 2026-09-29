@@ -12,6 +12,7 @@ import { ellipsify } from "./lib/explorer";
 import { GridBackground } from "./components/grid-background";
 import { ThemeToggle } from "./components/theme-toggle";
 import { ClusterSelect } from "./components/cluster-select";
+import { FraudReviewLink } from "./components/fraud-review-link";
 import { WalletButton } from "./components/wallet-button";
 import { useCluster } from "./components/cluster-context";
 
@@ -93,6 +94,7 @@ export default function Home() {
             <Link href="/campaigns" className="text-sm underline">
               Campaigns
             </Link>
+            <FraudReviewLink />
             <ThemeToggle />
             <ClusterSelect />
             <WalletButton />

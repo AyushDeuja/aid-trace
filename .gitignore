@@ -49,5 +49,10 @@ next-env.d.ts
 # Local evidence and PostgreSQL backup archives
 /data/
 
+# Python service environments and test cache
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+
 # solana local validator
 test-ledger/
