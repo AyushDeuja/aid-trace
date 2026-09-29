@@ -125,6 +125,12 @@ The service API documentation is at `http://localhost:8001/docs`. Medium and
 high findings are a human-review queue, never a fraud verdict or automatic
 fund-control action. Reviewer outcomes form the future labelled dataset.
 
+For dashboard use, leave `FRAUD_SERVICE_URL=http://127.0.0.1:8001` in the
+server-only `.env` file, start both services, connect the GlobalConfig admin
+wallet, and open `/admin/fraud`. The browser talks only to Next.js `/api/fraud`
+proxy routes; it never receives the Python service URL. This admin check is a
+local/demo UI gate, not production-grade signed-wallet authentication.
+
 The default browser network is Devnet. Start from `.env.example` for local
 configuration; never commit secrets or put secrets in public environment values.
 
