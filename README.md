@@ -93,6 +93,38 @@ production database without a reviewed recovery plan):
 pg_restore --dbname="$DATABASE_URL" data/backups/postgres/metadata-documents-<timestamp>.dump
 ```
 
+## Advisory fraud scoring (Task 7)
+
+`services/fraud/` is a separate Python service. It reads only finalized
+PostgreSQL projections from `index:chain`; it does not have a wallet, signer,
+Solana RPC client, or permission to change campaign/fund state. Its initial
+`rules-graph-v1` scorer is deliberately explainable and rule-based because the
+project has no labelled fraud dataset yet.
+
+After applying migrations, create a Python virtual environment and install the
+service dependencies:
+
+```bash
+cd services/fraud
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cd ../..
+```
+
+With `DATABASE_URL` exported, run a finalized index and then one manual
+advisory scoring pass:
+
+```bash
+npm run index:chain
+npm run fraud:score
+npm run fraud:dev
+```
+
+The service API documentation is at `http://localhost:8001/docs`. Medium and
+high findings are a human-review queue, never a fraud verdict or automatic
+fund-control action. Reviewer outcomes form the future labelled dataset.
+
 The default browser network is Devnet. Start from `.env.example` for local
 configuration; never commit secrets or put secrets in public environment values.
 
