@@ -10,6 +10,7 @@ pub const VERIFIER_SEED: &[u8] = b"verifier";
 pub const TRUST_SCORE_SEED: &[u8] = b"trust";
 pub const FRAUD_FLAG_SEED: &[u8] = b"fraud_flag";
 pub const FUNDING_COUNTER_SEED: &[u8] = b"funding_counter";
+pub const TRUST_AUTOMATION_PAYER_SEED: &[u8] = b"trust_automation_payer";
 
 pub const PROTOCOL_VERSION: u16 = 1;
 pub const DEFAULT_FRAUD_THRESHOLD: u8 = 80;

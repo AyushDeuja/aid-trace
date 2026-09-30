@@ -34,6 +34,76 @@ pub mod aidtrace {
         Ok(())
     }
 
+    pub fn set_trust_authority(ctx: Context<SetTrustAuthority>, trust_authority: Pubkey) -> Result<()> {
+        require!(trust_authority != Pubkey::default(), AidTraceError::InvalidInput);
+        let previous_authority = ctx.accounts.config.trust_authority;
+        ctx.accounts.config.trust_authority = trust_authority;
+        emit!(TrustAuthorityChanged { config: ctx.accounts.config.key(), previous_authority, next_authority: trust_authority, occurred_at: Clock::get()?.unix_timestamp });
+        Ok(())
+    }
+
+    pub fn initialize_trust_score(ctx: Context<InitializeTrustScore>) -> Result<()> {
+        let trust = &mut ctx.accounts.trust_score;
+        trust.subject = ctx.accounts.campaign.key();
+        trust.score = 0;
+        trust.risk_band = RiskBand::Low;
+        trust.model_version_digest = [1; 32];
+        trust.reason_digest = [1; 32];
+        trust.checkpoint_slot = 0;
+        trust.evaluated_at = 0;
+        trust.canonical_sequence = 0;
+        trust.flagged = false;
+        trust.bump = ctx.bumps.trust_score;
+        Ok(())
+    }
+
+    /// This base-layer form is deliberately restricted to the configured trust
+    /// authority. The ER/session-token path is added by the MagicBlock worker
+    /// after delegation; it shares these validation and state invariants.
+    pub fn update_trust_score(
+        ctx: Context<UpdateTrustScore>, score: u8, risk_band: RiskBand,
+        model_version_digest: [u8; 32], reason_digest: [u8; 32],
+        checkpoint_slot: u64, expected_sequence: u64,
+    ) -> Result<()> {
+        require!(score <= 100, AidTraceError::InvalidInput);
+        validate_digest(&model_version_digest)?;
+        validate_digest(&reason_digest)?;
+        let trust = &mut ctx.accounts.trust_score;
+        require!(expected_sequence == trust.canonical_sequence.checked_add(1).ok_or(AidTraceError::CounterExhausted)?, AidTraceError::InvalidSequence);
+        trust.score = score;
+        trust.risk_band = risk_band;
+        trust.model_version_digest = model_version_digest;
+        trust.reason_digest = reason_digest;
+        trust.checkpoint_slot = checkpoint_slot;
+        trust.evaluated_at = Clock::get()?.unix_timestamp;
+        trust.canonical_sequence = expected_sequence;
+        trust.flagged = score >= ctx.accounts.config.fraud_threshold;
+        emit!(TrustScoreCommitted { trust_score: trust.key(), subject: trust.subject, score, sequence: expected_sequence, occurred_at: trust.evaluated_at });
+        Ok(())
+    }
+
+    pub fn upsert_fraud_flag(ctx: Context<UpsertFraudFlag>) -> Result<()> {
+        let trust = &ctx.accounts.trust_score;
+        require!(trust.score >= ctx.accounts.config.fraud_threshold, AidTraceError::InvalidInput);
+        let flag = &mut ctx.accounts.fraud_flag;
+        flag.subject = trust.subject;
+        flag.severity = trust.score;
+        flag.triggering_score = trust.score;
+        flag.reason_digest = trust.reason_digest;
+        flag.created_at = Clock::get()?.unix_timestamp;
+        flag.resolution = FraudFlagResolution::Open;
+        flag.bump = ctx.bumps.fraud_flag;
+        emit!(FraudFlagRaised { fraud_flag: flag.key(), subject: flag.subject, severity: flag.severity, triggering_score: flag.triggering_score, occurred_at: flag.created_at });
+        Ok(())
+    }
+
+    pub fn resolve_fraud_flag(ctx: Context<ResolveFraudFlag>, resolution: FraudFlagResolution) -> Result<()> {
+        require!(matches!(resolution, FraudFlagResolution::Resolved | FraudFlagResolution::Dismissed), AidTraceError::InvalidStatusTransition);
+        ctx.accounts.fraud_flag.resolution = resolution;
+        emit!(FraudFlagResolved { fraud_flag: ctx.accounts.fraud_flag.key(), subject: ctx.accounts.fraud_flag.subject, actor: ctx.accounts.admin.key(), occurred_at: Clock::get()?.unix_timestamp });
+        Ok(())
+    }
+
     pub fn register_organization(
         ctx: Context<RegisterOrganization>,
         metadata_digest: [u8; 32],
@@ -666,6 +736,52 @@ pub struct InitializeConfig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct SetTrustAuthority<'info> {
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Account<'info, Organization>,
+    #[account(init, payer = admin, space = TrustScore::SPACE, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
+    pub trust_score: Account<'info, TrustScore>,
+    #[account(mut)] pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)]
+    pub trust_score: Account<'info, TrustScore>,
+    pub trust_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct UpsertFraudFlag<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)] pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
+    #[account(init_if_needed, payer = payer, space = FraudFlag::SPACE, seeds = [FRAUD_FLAG_SEED, trust_score.subject.as_ref()], bump)] pub fraud_flag: Account<'info, FraudFlag>,
+    #[account(mut)] pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ResolveFraudFlag<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)] pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [FRAUD_FLAG_SEED, fraud_flag.subject.as_ref()], bump = fraud_flag.bump)] pub fraud_flag: Account<'info, FraudFlag>,
+    pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
 #[instruction(metadata_digest: [u8; 32])]
 pub struct RegisterOrganization<'info> {
     #[account(
@@ -921,6 +1037,7 @@ fn validate_campaign_uri(uri: &str) -> Result<()> {
 fn initialize_global_config(config: &mut GlobalConfig, deployer: Pubkey, bump: u8) {
     config.admin = deployer;
     config.treasury_authority = deployer;
+    config.trust_authority = deployer;
     config.fraud_threshold = DEFAULT_FRAUD_THRESHOLD;
     config.paused = false;
     config.protocol_version = PROTOCOL_VERSION;
@@ -1102,6 +1219,7 @@ mod tests {
         let mut config = GlobalConfig {
             admin: Pubkey::default(),
             treasury_authority: Pubkey::default(),
+            trust_authority: Pubkey::default(),
             fraud_threshold: 0,
             paused: true,
             protocol_version: 0,
@@ -1153,6 +1271,7 @@ mod tests {
 
         assert_eq!(config.admin, authority);
         assert_eq!(config.treasury_authority, authority);
+        assert_eq!(config.trust_authority, authority);
         assert!(!config.paused);
         assert_eq!(organization.status, OrganizationStatus::Pending);
         assert!(!organization.verified);
@@ -1173,13 +1292,13 @@ mod tests {
 
     #[test]
     fn account_spaces_include_discriminators() {
-        assert_eq!(GlobalConfig::SPACE, 77);
+        assert_eq!(GlobalConfig::SPACE, 109);
         assert_eq!(Organization::SPACE, 156);
         assert_eq!(Campaign::SPACE, 683);
         assert_eq!(Allocation::SPACE, 146);
         assert_eq!(Disbursement::SPACE, 202);
         assert_eq!(DeliveryVerification::SPACE, 123);
-        assert_eq!(TrustScore::SPACE, 92);
+        assert_eq!(TrustScore::SPACE, 132);
         assert_eq!(FraudFlag::SPACE, 84);
         assert_eq!(FundingCounter::SPACE, 73);
     }

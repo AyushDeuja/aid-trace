@@ -11,6 +11,7 @@
     "index:chain": "node scripts/index-chain.mjs",
     "fraud:score": "cd services/fraud && python -m fraud_service.cli",
     "fraud:dev": "cd services/fraud && python -m uvicorn fraud_service.app:app --reload --port 8001",
+    "trust:worker": "node services/trust-writer/worker.mjs",
     "fraud:test": "cd services/fraud && python -m pytest",
     "index:organizations": "node scripts/index-organizations.mjs",
     "index:finance": "node scripts/index-finance.mjs",
@@ -37,6 +38,8 @@
   "version": "0.0.0",
   "private": true,
   "dependencies": {
+    "@magicblock-labs/ephemeral-rollups-sdk": "^0.15.5",
+    "@magicblock-labs/gum-sdk": "^3.0.10",
     "@solana/kit": "^6.3.0",
     "@solana/kit-client-rpc": "^0.7.0",
     "@solana/kit-plugin-rpc": "^0.7.0",
