@@ -1,4 +1,9 @@
 use anchor_lang::prelude::*;
+use anchor_lang::system_program::{transfer, Transfer};
+use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
+use ephemeral_rollups_sdk::cpi::DelegateConfig;
+use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
+use session_keys::{SessionTokenV2, SessionV2};
 
 pub mod constants;
 pub mod errors;
@@ -12,9 +17,61 @@ use state::*;
 
 declare_id!("FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M");
 
+#[ephemeral]
 #[program]
 pub mod aidtrace {
     use super::*;
+
+    /// One-time in-place upgrade from the pre-Task-8 GlobalConfig layout.
+    /// It receives an unchecked account because Anchor cannot deserialize the
+    /// shorter legacy bytes into the new account type.
+    pub fn migrate_global_config_v2(ctx: Context<MigrateGlobalConfigV2>) -> Result<()> {
+        let config_info = ctx.accounts.config.to_account_info();
+        require_keys_eq!(*config_info.owner, crate::ID, AidTraceError::InvalidAccountOwner);
+        let (expected, bump) = Pubkey::find_program_address(&[CONFIG_SEED], &crate::ID);
+        require_keys_eq!(expected, config_info.key(), AidTraceError::InvalidPda);
+        let legacy = config_info.try_borrow_data()?;
+        const LEGACY_CONFIG_SPACE: usize = 8 + 32 + 32 + 1 + 1 + 2 + 1;
+        require!(legacy.len() == LEGACY_CONFIG_SPACE, AidTraceError::InvalidInput);
+        require!(legacy[..8] == *GlobalConfig::DISCRIMINATOR, AidTraceError::InvalidAccountOwner);
+        let legacy_admin = Pubkey::new_from_array(legacy[8..40].try_into().map_err(|_| error!(AidTraceError::InvalidInput))?);
+        let treasury_authority = Pubkey::new_from_array(legacy[40..72].try_into().map_err(|_| error!(AidTraceError::InvalidInput))?);
+        let fraud_threshold = legacy[72];
+        let paused = legacy[73] != 0;
+        let previous_version = u16::from_le_bytes(legacy[74..76].try_into().map_err(|_| error!(AidTraceError::InvalidInput))?);
+        let previous_bump = legacy[76];
+        drop(legacy);
+        require_keys_eq!(legacy_admin, ctx.accounts.admin.key(), AidTraceError::Unauthorized);
+        require!(previous_bump == bump, AidTraceError::InvalidPda);
+        require!(previous_version < 2, AidTraceError::InvalidStatusTransition);
+        let required_lamports = Rent::get()?.minimum_balance(GlobalConfig::SPACE);
+        let current_lamports = config_info.lamports();
+        if required_lamports > current_lamports {
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    Transfer {
+                        from: ctx.accounts.admin.to_account_info(),
+                        to: config_info.clone(),
+                    },
+                ),
+                required_lamports - current_lamports,
+            )?;
+        }
+        config_info.resize(GlobalConfig::SPACE)?;
+        let upgraded = GlobalConfig {
+            admin: legacy_admin,
+            treasury_authority,
+            trust_authority: legacy_admin,
+            fraud_threshold,
+            paused,
+            protocol_version: 2,
+            bump: previous_bump,
+        };
+        let mut target = config_info.try_borrow_mut_data()?;
+        upgraded.try_serialize(&mut &mut target[..])?;
+        Ok(())
+    }
 
     pub fn initialize_config(ctx: Context<InitializeConfig>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
@@ -42,7 +99,8 @@ pub mod aidtrace {
         Ok(())
     }
 
-    pub fn initialize_trust_score(ctx: Context<InitializeTrustScore>) -> Result<()> {
+    pub fn initialize_trust_score(ctx: Context<InitializeTrustScore>, automation_lamports: u64) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
         let trust = &mut ctx.accounts.trust_score;
         trust.subject = ctx.accounts.campaign.key();
         trust.score = 0;
@@ -54,31 +112,99 @@ pub mod aidtrace {
         trust.canonical_sequence = 0;
         trust.flagged = false;
         trust.bump = ctx.bumps.trust_score;
+        ctx.accounts.automation_payer.campaign = ctx.accounts.campaign.key();
+        ctx.accounts.automation_payer.bump = ctx.bumps.automation_payer;
+        if automation_lamports > 0 {
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    Transfer {
+                        from: ctx.accounts.trust_authority.to_account_info(),
+                        to: ctx.accounts.automation_payer.to_account_info(),
+                    },
+                ),
+                automation_lamports,
+            )?;
+        }
         Ok(())
     }
 
-    /// This base-layer form is deliberately restricted to the configured trust
-    /// authority. The ER/session-token path is added by the MagicBlock worker
-    /// after delegation; it shares these validation and state invariants.
+    pub fn delegate_trust_score(ctx: Context<DelegateTrustScore>) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        ctx.accounts.delegate_trust_score(
+            &ctx.accounts.trust_authority,
+            &[TRUST_SCORE_SEED, ctx.accounts.campaign.key().as_ref()],
+            DelegateConfig::default(),
+        )?;
+        ctx.accounts.delegate_automation_payer(
+            &ctx.accounts.trust_authority,
+            &[TRUST_AUTOMATION_PAYER_SEED, ctx.accounts.campaign.key().as_ref()],
+            DelegateConfig::default(),
+        )?;
+        Ok(())
+    }
+
     pub fn update_trust_score(
         ctx: Context<UpdateTrustScore>, score: u8, risk_band: RiskBand,
         model_version_digest: [u8; 32], reason_digest: [u8; 32],
-        checkpoint_slot: u64, expected_sequence: u64,
+        checkpoint_slot: u64, evaluated_at: i64, expected_sequence: u64,
     ) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        require!(ctx.accounts.is_valid().map_err(|_| error!(AidTraceError::InvalidTrustSession))?, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.authority, ctx.accounts.config.trust_authority, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.target_program, crate::ID, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.session_signer, ctx.accounts.session_signer.key(), AidTraceError::InvalidTrustSession);
         require!(score <= 100, AidTraceError::InvalidInput);
         validate_digest(&model_version_digest)?;
         validate_digest(&reason_digest)?;
         let trust = &mut ctx.accounts.trust_score;
+        require!(evaluated_at > trust.evaluated_at && checkpoint_slot >= trust.checkpoint_slot, AidTraceError::StaleTrustEvaluation);
         require!(expected_sequence == trust.canonical_sequence.checked_add(1).ok_or(AidTraceError::CounterExhausted)?, AidTraceError::InvalidSequence);
         trust.score = score;
         trust.risk_band = risk_band;
         trust.model_version_digest = model_version_digest;
         trust.reason_digest = reason_digest;
         trust.checkpoint_slot = checkpoint_slot;
-        trust.evaluated_at = Clock::get()?.unix_timestamp;
+        trust.evaluated_at = evaluated_at;
         trust.canonical_sequence = expected_sequence;
         trust.flagged = score >= ctx.accounts.config.fraud_threshold;
         emit!(TrustScoreCommitted { trust_score: trust.key(), subject: trust.subject, score, sequence: expected_sequence, occurred_at: trust.evaluated_at });
+        Ok(())
+    }
+
+    /// Schedules settlement for the already-mutated ER TrustScore. The worker
+    /// can only call this together with a valid scoped Session Key.
+    pub fn commit_trust_score(ctx: Context<CommitTrustScore>) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        require!(ctx.accounts.is_valid().map_err(|_| error!(AidTraceError::InvalidTrustSession))?, AidTraceError::InvalidTrustSession);
+        let campaign = ctx.accounts.trust_score.subject;
+        let seeds: &[&[u8]] = &[TRUST_AUTOMATION_PAYER_SEED, campaign.as_ref(), &[ctx.accounts.automation_payer.bump]];
+        MagicIntentBundleBuilder::new(
+            ctx.accounts.automation_payer.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .magic_fee_vault(ctx.accounts.magic_fee_vault.to_account_info())
+        .commit(&[ctx.accounts.trust_score.to_account_info()])
+        .build_and_invoke_signed(&[seeds])?;
+        Ok(())
+    }
+
+    pub fn undelegate_trust_score(ctx: Context<UndelegateTrustScore>) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        let campaign = ctx.accounts.trust_score.subject;
+        let seeds: &[&[u8]] = &[TRUST_AUTOMATION_PAYER_SEED, campaign.as_ref(), &[ctx.accounts.automation_payer.bump]];
+        MagicIntentBundleBuilder::new(
+            ctx.accounts.automation_payer.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .magic_fee_vault(ctx.accounts.magic_fee_vault.to_account_info())
+        .commit_and_undelegate(&[
+            ctx.accounts.trust_score.to_account_info(),
+            ctx.accounts.automation_payer.to_account_info(),
+        ])
+        .build_and_invoke_signed(&[seeds])?;
         Ok(())
     }
 
@@ -736,6 +862,16 @@ pub struct InitializeConfig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct MigrateGlobalConfigV2<'info> {
+    /// CHECK: validated as the canonical program-owned legacy config in the handler.
+    #[account(mut)]
+    pub config: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct SetTrustAuthority<'info> {
     #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)]
     pub config: Account<'info, GlobalConfig>,
@@ -744,24 +880,84 @@ pub struct SetTrustAuthority<'info> {
 
 #[derive(Accounts)]
 pub struct InitializeTrustScore<'info> {
-    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)]
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)]
     pub config: Account<'info, GlobalConfig>,
     #[account(seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
     pub campaign: Account<'info, Campaign>,
     #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
     pub organization: Account<'info, Organization>,
-    #[account(init, payer = admin, space = TrustScore::SPACE, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
+    #[account(init, payer = trust_authority, space = TrustScore::SPACE, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
     pub trust_score: Account<'info, TrustScore>,
-    #[account(mut)] pub admin: Signer<'info>,
+    #[account(init, payer = trust_authority, space = TrustAutomationPayer::SPACE, seeds = [TRUST_AUTOMATION_PAYER_SEED, campaign.key().as_ref()], bump)]
+    pub automation_payer: Account<'info, TrustAutomationPayer>,
+    #[account(mut)] pub trust_authority: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegateTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Account<'info, Organization>,
+    #[account(mut, del, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
+    pub trust_score: AccountInfo<'info>,
+    #[account(mut, del, seeds = [TRUST_AUTOMATION_PAYER_SEED, campaign.key().as_ref()], bump)]
+    pub automation_payer: AccountInfo<'info>,
+    #[account(mut)] pub trust_authority: Signer<'info>,
 }
 
 #[derive(Accounts)]
 pub struct UpdateTrustScore<'info> {
-    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)]
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, GlobalConfig>,
     #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)]
     pub trust_score: Account<'info, TrustScore>,
+    pub session_token: Account<'info, SessionTokenV2>,
+    pub session_signer: Signer<'info>,
+}
+
+impl<'info> SessionV2<'info> for UpdateTrustScore<'info> {
+    fn session_token(&self) -> Option<Account<'info, SessionTokenV2>> { Some(self.session_token.clone()) }
+    fn session_signer(&self) -> Signer<'info> { self.session_signer.clone() }
+    fn session_authority(&self) -> Pubkey { self.config.trust_authority }
+    fn target_program(&self) -> Pubkey { crate::ID }
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct CommitTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)] pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
+    #[account(mut, seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump = automation_payer.bump, has_one = campaign @ AidTraceError::InvalidPda)] pub automation_payer: Account<'info, TrustAutomationPayer>,
+    /// CHECK: validated by the MagicBlock delegation/fee-vault program during intent execution.
+    #[account(mut)] pub magic_fee_vault: UncheckedAccount<'info>,
+    pub session_token: Account<'info, SessionTokenV2>,
+    pub session_signer: Signer<'info>,
+    /// CHECK: the campaign is only used to bind the automation payer PDA.
+    #[account(address = trust_score.subject @ AidTraceError::InvalidPda)] pub campaign: UncheckedAccount<'info>,
+}
+
+impl<'info> SessionV2<'info> for CommitTrustScore<'info> {
+    fn session_token(&self) -> Option<Account<'info, SessionTokenV2>> { Some(self.session_token.clone()) }
+    fn session_signer(&self) -> Signer<'info> { self.session_signer.clone() }
+    fn session_authority(&self) -> Pubkey { self.config.trust_authority }
+    fn target_program(&self) -> Pubkey { crate::ID }
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct UndelegateTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)] pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
+    #[account(mut, seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump = automation_payer.bump, has_one = campaign @ AidTraceError::InvalidPda)] pub automation_payer: Account<'info, TrustAutomationPayer>,
+    /// CHECK: validated by the MagicBlock delegation/fee-vault program during intent execution.
+    #[account(mut)] pub magic_fee_vault: UncheckedAccount<'info>,
+    /// CHECK: binds the automation payer to the trust subject.
+    #[account(address = trust_score.subject @ AidTraceError::InvalidPda)] pub campaign: UncheckedAccount<'info>,
     pub trust_authority: Signer<'info>,
 }
 

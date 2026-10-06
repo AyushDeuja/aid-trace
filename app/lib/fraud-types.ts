@@ -31,7 +31,7 @@ export type FraudSubject = {
   features: Record<string, unknown>;
 };
 export type TrustWriteStatus = {
-  status: "pending" | "processing" | "committed" | "failed";
+  status: "pending" | "processing" | "committed" | "action_pending" | "failed";
   expected_sequence: string | number;
   er_signature: string | null;
   base_commit_signature: string | null;
@@ -143,6 +143,6 @@ export function isFraudCluster(value: string | null): value is FraudCluster {
 export function parseTrustWriteStatus(value: unknown): TrustWriteStatus {
   const row = object(value);
   if (!row || typeof row.status !== "string" || (typeof row.expected_sequence !== "string" && typeof row.expected_sequence !== "number")) throw new Error("Fraud service returned invalid trust status");
-  if (row.status !== "pending" && row.status !== "processing" && row.status !== "committed" && row.status !== "failed") throw new Error("Fraud service returned invalid trust status");
+  if (row.status !== "pending" && row.status !== "processing" && row.status !== "committed" && row.status !== "action_pending" && row.status !== "failed") throw new Error("Fraud service returned invalid trust status");
   return { status: row.status, expected_sequence: row.expected_sequence, er_signature: typeof row.er_signature === "string" ? row.er_signature : null, base_commit_signature: typeof row.base_commit_signature === "string" ? row.base_commit_signature : null, action_outcome: typeof row.action_outcome === "string" ? row.action_outcome : null, error_class: typeof row.error_class === "string" ? row.error_class : null };
 }

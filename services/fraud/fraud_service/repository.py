@@ -143,7 +143,7 @@ class FraudRepository:
                 connection.execute(
                     "INSERT INTO trust_write_jobs(id,evaluation_id,cluster,program_id,subject_address,expected_sequence) "
                     "VALUES(%s,%s,%s,%s,%s,%s)",
-                    (str(uuid.uuid4()), evaluation_id, cluster, PROGRAM_ID, campaign["address"], 1),
+                    (str(uuid.uuid4()), evaluation_id, cluster, PROGRAM_ID, campaign["address"], None),
                 )
                 if result.risk_band in {"medium", "high"}:
                     connection.execute("INSERT INTO fraud_findings(id,evaluation_id,cluster,program_id,subject_address,severity) VALUES(%s,%s,%s,%s,%s,%s)", (str(uuid.uuid4()), evaluation_id, cluster, PROGRAM_ID, campaign["address"], result.risk_band))

@@ -160,6 +160,18 @@ pub struct TrustScore {
     pub bump: u8,
 }
 
+/// A program-owned PDA delegated with its campaign TrustScore. It is only used
+/// to sponsor MagicBlock commit/action fees; it cannot authorize custody flows.
+#[account]
+pub struct TrustAutomationPayer {
+    pub campaign: Pubkey,
+    pub bump: u8,
+}
+
+impl TrustAutomationPayer {
+    pub const SPACE: usize = 8 + 32 + 1;
+}
+
 impl TrustScore {
     pub const SPACE: usize = 8 + 32 + 1 + 1 + 32 + 32 + 8 + 8 + 8 + 1 + 1;
 }
@@ -177,6 +189,23 @@ pub struct FraudFlag {
 
 impl FraudFlag {
     pub const SPACE: usize = 8 + 32 + 1 + 1 + 32 + 8 + 1 + 1;
+}
+
+/// Immutable audit record for a threshold action. Its PDA includes the trust
+/// sequence, making retries for one committed score idempotent.
+#[account]
+pub struct FraudFlagEvent {
+    pub fraud_flag: Pubkey,
+    pub subject: Pubkey,
+    pub sequence: u64,
+    pub score: u8,
+    pub reason_digest: [u8; 32],
+    pub occurred_at: i64,
+    pub bump: u8,
+}
+
+impl FraudFlagEvent {
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + 1 + 32 + 8 + 1;
 }
 
 #[account]

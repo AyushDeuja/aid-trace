@@ -243,7 +243,10 @@ export async function fetchAdmin(
   const raw = Uint8Array.from(atob(result.value.data[0]), (c) =>
     c.charCodeAt(0)
   );
-  if (raw.length !== 77) throw new Error("Unexpected config size");
+  // Devnet upgrades may expose the legacy 77-byte config until the explicit
+  // Task 8 migration runs; the migrated layout is 109 bytes.
+  if (raw.length !== 77 && raw.length !== 109)
+    throw new Error("Unexpected config size");
   const expected = new Uint8Array(
     await crypto.subtle.digest("SHA-256", utf8.encode("account:GlobalConfig"))
   ).slice(0, 8);
