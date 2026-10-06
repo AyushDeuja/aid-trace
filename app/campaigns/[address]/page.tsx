@@ -21,6 +21,7 @@ import {
   type Campaign,
 } from "../../lib/campaigns/chain";
 import { displaySol, parseSolAmount } from "../../lib/campaigns/amount";
+import { TrustAssessmentPanel } from "../../components/trust-assessment-panel";
 
 export default function CampaignDetailPage() {
   const params = useParams<{ address: string }>();
@@ -204,6 +205,7 @@ export default function CampaignDetailPage() {
           >
             View campaign on explorer
           </a>
+          <TrustAssessmentPanel campaign={campaign.address} />
           <section className="space-y-3 rounded-xl border p-5">
             <h2 className="text-xl font-semibold">Donate SOL</h2>
             <input
