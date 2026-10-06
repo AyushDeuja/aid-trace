@@ -12,6 +12,8 @@ export * from "./campaignVault";
 export * from "./deliveryVerification";
 export * from "./disbursement";
 export * from "./donation";
+export * from "./fraudFlag";
 export * from "./globalConfig";
 export * from "./organization";
+export * from "./trustScore";
 export * from "./verifier";

@@ -55,6 +55,11 @@ export type GlobalConfig = {
   discriminator: ReadonlyUint8Array;
   admin: Address;
   treasuryAuthority: Address;
+  /**
+   * The authority that may provision narrowly scoped trust-writer sessions.
+   * It is distinct from treasury authority and cannot move funds.
+   */
+  trustAuthority: Address;
   fraudThreshold: number;
   paused: boolean;
   protocolVersion: number;
@@ -64,6 +69,11 @@ export type GlobalConfig = {
 export type GlobalConfigArgs = {
   admin: Address;
   treasuryAuthority: Address;
+  /**
+   * The authority that may provision narrowly scoped trust-writer sessions.
+   * It is distinct from treasury authority and cannot move funds.
+   */
+  trustAuthority: Address;
   fraudThreshold: number;
   paused: boolean;
   protocolVersion: number;
@@ -77,6 +87,7 @@ export function getGlobalConfigEncoder(): FixedSizeEncoder<GlobalConfigArgs> {
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["admin", getAddressEncoder()],
       ["treasuryAuthority", getAddressEncoder()],
+      ["trustAuthority", getAddressEncoder()],
       ["fraudThreshold", getU8Encoder()],
       ["paused", getBooleanEncoder()],
       ["protocolVersion", getU16Encoder()],
@@ -92,6 +103,7 @@ export function getGlobalConfigDecoder(): FixedSizeDecoder<GlobalConfig> {
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["admin", getAddressDecoder()],
     ["treasuryAuthority", getAddressDecoder()],
+    ["trustAuthority", getAddressDecoder()],
     ["fraudThreshold", getU8Decoder()],
     ["paused", getBooleanDecoder()],
     ["protocolVersion", getU16Decoder()],
@@ -161,5 +173,5 @@ export async function fetchAllMaybeGlobalConfig(
 }
 
 export function getGlobalConfigSize(): number {
-  return 77;
+  return 109;
 }

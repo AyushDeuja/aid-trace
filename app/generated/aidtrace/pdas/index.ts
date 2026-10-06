@@ -12,6 +12,7 @@ export * from "./config";
 export * from "./disbursement";
 export * from "./donation";
 export * from "./organization";
+export * from "./trustScore";
 export * from "./vault";
 export * from "./verification";
 export * from "./verifierRecord";
