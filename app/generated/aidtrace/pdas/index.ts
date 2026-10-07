@@ -7,11 +7,19 @@
  */
 
 export * from "./allocation";
+export * from "./automationPayer";
+export * from "./bufferAutomationPayer";
+export * from "./bufferTrustScore";
 export * from "./campaign";
 export * from "./config";
+export * from "./delegationMetadataAutomationPayer";
+export * from "./delegationMetadataTrustScore";
+export * from "./delegationRecordAutomationPayer";
+export * from "./delegationRecordTrustScore";
 export * from "./disbursement";
 export * from "./donation";
 export * from "./organization";
+export * from "./trustScore";
 export * from "./vault";
 export * from "./verification";
 export * from "./verifierRecord";

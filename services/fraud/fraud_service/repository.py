@@ -137,6 +137,14 @@ class FraudRepository:
                 connection.execute("INSERT INTO fraud_feature_snapshots(id,cluster,program_id,subject_address,model_version,checkpoint_signature,checkpoint_slot,features_json,features_digest) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)", (snapshot_id, cluster, PROGRAM_ID, campaign["address"], MODEL_VERSION, checkpoint["last_signature"], checkpoint["last_slot"], canonical(features), feature_digest))
                 result: Evaluation = evaluate(features)
                 connection.execute("INSERT INTO fraud_evaluations(id,snapshot_id,cluster,program_id,subject_address,model_version,score,risk_band,reasons_json,checkpoint_signature,checkpoint_slot) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (evaluation_id, snapshot_id, cluster, PROGRAM_ID, campaign["address"], MODEL_VERSION, result.score, result.risk_band, canonical(result.reasons), checkpoint["last_signature"], checkpoint["last_slot"]))
+                # The outbox is intentionally committed with the evaluation.  The
+                # signer worker can retry safely, but it never needs a wallet or
+                # RPC capability in this scoring process.
+                connection.execute(
+                    "INSERT INTO trust_write_jobs(id,evaluation_id,cluster,program_id,subject_address,expected_sequence) "
+                    "VALUES(%s,%s,%s,%s,%s,%s)",
+                    (str(uuid.uuid4()), evaluation_id, cluster, PROGRAM_ID, campaign["address"], None),
+                )
                 if result.risk_band in {"medium", "high"}:
                     connection.execute("INSERT INTO fraud_findings(id,evaluation_id,cluster,program_id,subject_address,severity) VALUES(%s,%s,%s,%s,%s,%s)", (str(uuid.uuid4()), evaluation_id, cluster, PROGRAM_ID, campaign["address"], result.risk_band))
                     findings += 1
@@ -155,6 +163,16 @@ class FraudRepository:
             if severity:
                 query += " AND f.severity=%s"; values.append(severity)
             return list(connection.execute(query + " ORDER BY f.created_at DESC", values).fetchall())
+
+    def trust_status(self, cluster: str, address: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            return connection.execute(
+                "SELECT j.*,e.score,e.risk_band,e.model_version,e.checkpoint_slot "
+                "FROM trust_write_jobs j JOIN fraud_evaluations e ON e.id=j.evaluation_id "
+                "WHERE j.cluster=%s AND j.program_id=%s AND j.subject_address=%s "
+                "ORDER BY j.created_at DESC LIMIT 1",
+                (cluster, PROGRAM_ID, address),
+            ).fetchone()
 
     def review(self, finding_id: str, reviewer: str, disposition: str, note: str) -> dict[str, Any]:
         with self.connection() as connection:

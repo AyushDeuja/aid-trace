@@ -1,4 +1,10 @@
 use anchor_lang::prelude::*;
+use anchor_lang::system_program::{transfer, Transfer};
+use ephemeral_rollups_sdk::anchor::{action, commit, delegate, ephemeral};
+use ephemeral_rollups_sdk::cpi::DelegateConfig;
+use ephemeral_rollups_sdk::ephem::{CallHandler, MagicIntentBundleBuilder};
+use ephemeral_rollups_sdk::{ActionArgs, ShortAccountMeta};
+use session_keys::{SessionTokenV2, SessionV2};
 
 pub mod constants;
 pub mod errors;
@@ -12,9 +18,81 @@ use state::*;
 
 declare_id!("FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M");
 
+fn validate_magic_fee_vault(
+    trust_record: &AccountInfo,
+    payer_record: &AccountInfo,
+    magic_fee_vault: &AccountInfo,
+) -> Result<()> {
+    require_keys_eq!(*trust_record.owner, ephemeral_rollups_sdk::id(), AidTraceError::InvalidPda);
+    require_keys_eq!(*payer_record.owner, ephemeral_rollups_sdk::id(), AidTraceError::InvalidPda);
+    let trust_data = trust_record.try_borrow_data()?;
+    let payer_data = payer_record.try_borrow_data()?;
+    require!(trust_data.len() >= 40 && payer_data.len() >= 40, AidTraceError::InvalidPda);
+    let trust_validator = Pubkey::new_from_array(trust_data[8..40].try_into().map_err(|_| error!(AidTraceError::InvalidPda))?);
+    let payer_validator = Pubkey::new_from_array(payer_data[8..40].try_into().map_err(|_| error!(AidTraceError::InvalidPda))?);
+    drop(trust_data);
+    drop(payer_data);
+    require_keys_eq!(trust_validator, payer_validator, AidTraceError::InvalidPda);
+    let expected = ephemeral_rollups_sdk::pda::magic_fee_vault_pda_from_validator(&trust_validator);
+    require_keys_eq!(magic_fee_vault.key(), expected, AidTraceError::InvalidPda);
+    Ok(())
+}
+
+#[ephemeral]
 #[program]
 pub mod aidtrace {
     use super::*;
+
+    /// One-time in-place upgrade from the pre-Task-8 GlobalConfig layout.
+    /// It receives an unchecked account because Anchor cannot deserialize the
+    /// shorter legacy bytes into the new account type.
+    pub fn migrate_global_config_v2(ctx: Context<MigrateGlobalConfigV2>) -> Result<()> {
+        let config_info = ctx.accounts.config.to_account_info();
+        require_keys_eq!(*config_info.owner, crate::ID, AidTraceError::InvalidAccountOwner);
+        let (expected, bump) = Pubkey::find_program_address(&[CONFIG_SEED], &crate::ID);
+        require_keys_eq!(expected, config_info.key(), AidTraceError::InvalidPda);
+        let legacy = config_info.try_borrow_data()?;
+        const LEGACY_CONFIG_SPACE: usize = 8 + 32 + 32 + 1 + 1 + 2 + 1;
+        require!(legacy.len() == LEGACY_CONFIG_SPACE, AidTraceError::InvalidInput);
+        require!(legacy[..8] == *GlobalConfig::DISCRIMINATOR, AidTraceError::InvalidAccountOwner);
+        let legacy_admin = Pubkey::new_from_array(legacy[8..40].try_into().map_err(|_| error!(AidTraceError::InvalidInput))?);
+        let treasury_authority = Pubkey::new_from_array(legacy[40..72].try_into().map_err(|_| error!(AidTraceError::InvalidInput))?);
+        let fraud_threshold = legacy[72];
+        let paused = legacy[73] != 0;
+        let previous_version = u16::from_le_bytes(legacy[74..76].try_into().map_err(|_| error!(AidTraceError::InvalidInput))?);
+        let previous_bump = legacy[76];
+        drop(legacy);
+        require_keys_eq!(legacy_admin, ctx.accounts.admin.key(), AidTraceError::Unauthorized);
+        require!(previous_bump == bump, AidTraceError::InvalidPda);
+        require!(previous_version < 2, AidTraceError::InvalidStatusTransition);
+        let required_lamports = Rent::get()?.minimum_balance(GlobalConfig::SPACE);
+        let current_lamports = config_info.lamports();
+        if required_lamports > current_lamports {
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    Transfer {
+                        from: ctx.accounts.admin.to_account_info(),
+                        to: config_info.clone(),
+                    },
+                ),
+                required_lamports - current_lamports,
+            )?;
+        }
+        config_info.resize(GlobalConfig::SPACE)?;
+        let upgraded = GlobalConfig {
+            admin: legacy_admin,
+            treasury_authority,
+            trust_authority: legacy_admin,
+            fraud_threshold,
+            paused,
+            protocol_version: 2,
+            bump: previous_bump,
+        };
+        let mut target = config_info.try_borrow_mut_data()?;
+        upgraded.try_serialize(&mut &mut target[..])?;
+        Ok(())
+    }
 
     pub fn initialize_config(ctx: Context<InitializeConfig>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
@@ -31,6 +109,185 @@ pub mod aidtrace {
             protocol_version: ctx.accounts.config.protocol_version,
             occurred_at: now,
         });
+        Ok(())
+    }
+
+    pub fn set_trust_authority(ctx: Context<SetTrustAuthority>, trust_authority: Pubkey) -> Result<()> {
+        require!(trust_authority != Pubkey::default(), AidTraceError::InvalidInput);
+        let previous_authority = ctx.accounts.config.trust_authority;
+        ctx.accounts.config.trust_authority = trust_authority;
+        emit!(TrustAuthorityChanged { config: ctx.accounts.config.key(), previous_authority, next_authority: trust_authority, occurred_at: Clock::get()?.unix_timestamp });
+        Ok(())
+    }
+
+    pub fn initialize_trust_score(ctx: Context<InitializeTrustScore>, automation_lamports: u64) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        let trust = &mut ctx.accounts.trust_score;
+        trust.subject = ctx.accounts.campaign.key();
+        trust.score = 0;
+        trust.risk_band = RiskBand::Low;
+        trust.model_version_digest = [1; 32];
+        trust.reason_digest = [1; 32];
+        trust.checkpoint_slot = 0;
+        trust.evaluated_at = 0;
+        trust.canonical_sequence = 0;
+        trust.flagged = false;
+        trust.bump = ctx.bumps.trust_score;
+        ctx.accounts.automation_payer.campaign = ctx.accounts.campaign.key();
+        ctx.accounts.automation_payer.bump = ctx.bumps.automation_payer;
+        if automation_lamports > 0 {
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    Transfer {
+                        from: ctx.accounts.trust_authority.to_account_info(),
+                        to: ctx.accounts.automation_payer.to_account_info(),
+                    },
+                ),
+                automation_lamports,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delegate_trust_score(ctx: Context<DelegateTrustScore>) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        ctx.accounts.delegate_trust_score(
+            &ctx.accounts.trust_authority,
+            &[TRUST_SCORE_SEED, ctx.accounts.campaign.key().as_ref()],
+            DelegateConfig::default(),
+        )?;
+        ctx.accounts.delegate_automation_payer(
+            &ctx.accounts.trust_authority,
+            &[TRUST_AUTOMATION_PAYER_SEED, ctx.accounts.campaign.key().as_ref()],
+            DelegateConfig::default(),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_trust_score(
+        ctx: Context<UpdateTrustScore>, score: u8, risk_band: RiskBand,
+        model_version_digest: [u8; 32], reason_digest: [u8; 32],
+        checkpoint_slot: u64, evaluated_at: i64, expected_sequence: u64,
+    ) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        require!(ctx.accounts.is_valid().map_err(|_| error!(AidTraceError::InvalidTrustSession))?, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.authority, ctx.accounts.config.trust_authority, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.target_program, crate::ID, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.session_signer, ctx.accounts.session_signer.key(), AidTraceError::InvalidTrustSession);
+        require!(score <= 100, AidTraceError::InvalidInput);
+        validate_digest(&model_version_digest)?;
+        validate_digest(&reason_digest)?;
+        let trust = &mut ctx.accounts.trust_score;
+        require!(evaluated_at > trust.evaluated_at && checkpoint_slot >= trust.checkpoint_slot, AidTraceError::StaleTrustEvaluation);
+        require!(expected_sequence == trust.canonical_sequence.checked_add(1).ok_or(AidTraceError::CounterExhausted)?, AidTraceError::InvalidSequence);
+        trust.score = score;
+        trust.risk_band = risk_band;
+        trust.model_version_digest = model_version_digest;
+        trust.reason_digest = reason_digest;
+        trust.checkpoint_slot = checkpoint_slot;
+        trust.evaluated_at = evaluated_at;
+        trust.canonical_sequence = expected_sequence;
+        trust.flagged = score >= ctx.accounts.config.fraud_threshold;
+        emit!(TrustScoreCommitted { trust_score: trust.key(), subject: trust.subject, score, sequence: expected_sequence, occurred_at: trust.evaluated_at });
+        Ok(())
+    }
+
+    /// Schedules settlement for the already-mutated ER TrustScore. The worker
+    /// can only call this together with a valid scoped Session Key.
+    pub fn commit_trust_score(ctx: Context<CommitTrustScore>) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        require!(ctx.accounts.is_valid().map_err(|_| error!(AidTraceError::InvalidTrustSession))?, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.authority, ctx.accounts.config.trust_authority, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.target_program, crate::ID, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.session_signer, ctx.accounts.session_signer.key(), AidTraceError::InvalidTrustSession);
+        validate_magic_fee_vault(&ctx.accounts.trust_score_delegation_record.to_account_info(), &ctx.accounts.automation_payer_delegation_record.to_account_info(), &ctx.accounts.magic_fee_vault.to_account_info())?;
+        let campaign = ctx.accounts.trust_score.subject;
+        let seeds: &[&[u8]] = &[TRUST_AUTOMATION_PAYER_SEED, campaign.as_ref(), &[ctx.accounts.automation_payer.bump]];
+        let mut intent = MagicIntentBundleBuilder::new(
+            ctx.accounts.automation_payer.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .magic_fee_vault(ctx.accounts.magic_fee_vault.to_account_info())
+        .commit(&[ctx.accounts.trust_score.to_account_info()]);
+        if ctx.accounts.trust_score.flagged {
+            intent = intent.add_post_commit_actions([CallHandler {
+                destination_program: crate::ID,
+                accounts: vec![
+                    ShortAccountMeta { pubkey: ctx.accounts.config.key().to_bytes().into(), is_writable: false },
+                    ShortAccountMeta { pubkey: ctx.accounts.trust_score.key().to_bytes().into(), is_writable: false },
+                    ShortAccountMeta { pubkey: ctx.accounts.fraud_flag.key().to_bytes().into(), is_writable: true },
+                    ShortAccountMeta { pubkey: ctx.accounts.fraud_flag_event.key().to_bytes().into(), is_writable: true },
+                    ShortAccountMeta { pubkey: ctx.accounts.system_program.key().to_bytes().into(), is_writable: false },
+                    ShortAccountMeta { pubkey: crate::ID.to_bytes().into(), is_writable: false },
+                ],
+                args: ActionArgs::new(anchor_lang::InstructionData::data(&crate::instruction::UpsertFraudFlagFromTrustScore {})),
+                escrow_authority: ctx.accounts.automation_payer.to_account_info(),
+                compute_units: 200_000,
+            }]);
+        }
+        intent.build_and_invoke_signed(&[seeds])?;
+        Ok(())
+    }
+
+    pub fn undelegate_trust_score(ctx: Context<UndelegateTrustScore>) -> Result<()> {
+        require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        validate_magic_fee_vault(&ctx.accounts.trust_score_delegation_record.to_account_info(), &ctx.accounts.automation_payer_delegation_record.to_account_info(), &ctx.accounts.magic_fee_vault.to_account_info())?;
+        let campaign = ctx.accounts.trust_score.subject;
+        let seeds: &[&[u8]] = &[TRUST_AUTOMATION_PAYER_SEED, campaign.as_ref(), &[ctx.accounts.automation_payer.bump]];
+        MagicIntentBundleBuilder::new(
+            ctx.accounts.automation_payer.to_account_info(),
+            ctx.accounts.magic_context.to_account_info(),
+            ctx.accounts.magic_program.to_account_info(),
+        )
+        .magic_fee_vault(ctx.accounts.magic_fee_vault.to_account_info())
+        .commit_and_undelegate(&[
+            ctx.accounts.trust_score.to_account_info(),
+            ctx.accounts.automation_payer.to_account_info(),
+        ])
+        .build_and_invoke_signed(&[seeds])?;
+        Ok(())
+    }
+
+    pub fn upsert_fraud_flag_from_trust_score(ctx: Context<UpsertFraudFlagFromTrustScore>) -> Result<()> {
+        let trust = &ctx.accounts.trust_score;
+        require!(trust.score >= ctx.accounts.config.fraud_threshold, AidTraceError::InvalidInput);
+        let flag = &mut ctx.accounts.fraud_flag;
+        flag.subject = trust.subject;
+        flag.severity = trust.score;
+        flag.triggering_score = trust.score;
+        flag.reason_digest = trust.reason_digest;
+        flag.created_at = Clock::get()?.unix_timestamp;
+        flag.resolution = FraudFlagResolution::Open;
+        flag.bump = ctx.bumps.fraud_flag;
+        // A post-commit action may be retried after the TrustScore is already
+        // canonical.  The flag itself intentionally reopens, but the audit
+        // record for a canonical sequence is immutable: a retry must prove it
+        // is the same event rather than rewriting history.
+        let event = &mut ctx.accounts.fraud_flag_event;
+        if event.sequence == 0 {
+            event.fraud_flag = flag.key();
+            event.subject = trust.subject;
+            event.sequence = trust.canonical_sequence;
+            event.score = trust.score;
+            event.reason_digest = trust.reason_digest;
+            event.occurred_at = Clock::get()?.unix_timestamp;
+            event.bump = ctx.bumps.fraud_flag_event;
+        } else {
+            require!(event.fraud_flag == flag.key(), AidTraceError::InvalidPda);
+            require!(event.subject == trust.subject, AidTraceError::InvalidPda);
+            require!(event.sequence == trust.canonical_sequence, AidTraceError::InvalidSequence);
+            require!(event.score == trust.score && event.reason_digest == trust.reason_digest, AidTraceError::InvalidInput);
+        }
+        emit!(FraudFlagRaised { fraud_flag: flag.key(), subject: flag.subject, severity: flag.severity, triggering_score: flag.triggering_score, occurred_at: flag.created_at });
+        Ok(())
+    }
+
+    pub fn resolve_fraud_flag(ctx: Context<ResolveFraudFlag>, resolution: FraudFlagResolution) -> Result<()> {
+        require!(matches!(resolution, FraudFlagResolution::Resolved | FraudFlagResolution::Dismissed), AidTraceError::InvalidStatusTransition);
+        ctx.accounts.fraud_flag.resolution = resolution;
+        emit!(FraudFlagResolved { fraud_flag: ctx.accounts.fraud_flag.key(), subject: ctx.accounts.fraud_flag.subject, actor: ctx.accounts.admin.key(), occurred_at: Clock::get()?.unix_timestamp });
         Ok(())
     }
 
@@ -666,6 +923,148 @@ pub struct InitializeConfig<'info> {
 }
 
 #[derive(Accounts)]
+pub struct MigrateGlobalConfigV2<'info> {
+    /// CHECK: validated as the canonical program-owned legacy config in the handler.
+    #[account(mut)]
+    pub config: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetTrustAuthority<'info> {
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Account<'info, Organization>,
+    #[account(init, payer = trust_authority, space = TrustScore::SPACE, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
+    pub trust_score: Account<'info, TrustScore>,
+    #[account(init, payer = trust_authority, space = TrustAutomationPayer::SPACE, seeds = [TRUST_AUTOMATION_PAYER_SEED, campaign.key().as_ref()], bump)]
+    pub automation_payer: Account<'info, TrustAutomationPayer>,
+    #[account(mut)] pub trust_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegateTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [CAMPAIGN_SEED, organization.key().as_ref(), &campaign.campaign_id.to_le_bytes()], bump = campaign.bump, has_one = organization)]
+    pub campaign: Account<'info, Campaign>,
+    #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
+    pub organization: Account<'info, Organization>,
+    #[account(mut, del, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
+    pub trust_score: UncheckedAccount<'info>,
+    #[account(mut, del, seeds = [TRUST_AUTOMATION_PAYER_SEED, campaign.key().as_ref()], bump)]
+    pub automation_payer: UncheckedAccount<'info>,
+    #[account(mut)] pub trust_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)]
+    pub trust_score: Account<'info, TrustScore>,
+    pub session_token: Account<'info, SessionTokenV2>,
+    pub session_signer: Signer<'info>,
+}
+
+impl<'info> SessionV2<'info> for UpdateTrustScore<'info> {
+    fn session_token(&self) -> Option<Account<'info, SessionTokenV2>> { Some(self.session_token.clone()) }
+    fn session_signer(&self) -> Signer<'info> { self.session_signer.clone() }
+    fn session_authority(&self) -> Pubkey { self.config.trust_authority }
+    fn target_program(&self) -> Pubkey { crate::ID }
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct CommitTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)] pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
+    #[account(mut, seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump = automation_payer.bump, has_one = campaign @ AidTraceError::InvalidPda)] pub automation_payer: Account<'info, TrustAutomationPayer>,
+    /// CHECK: validated by the MagicBlock delegation/fee-vault program during intent execution.
+    #[account(mut)] pub magic_fee_vault: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated score; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&trust_score.key()))]
+    pub trust_score_delegation_record: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated fee payer; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&automation_payer.key()))]
+    pub automation_payer_delegation_record: UncheckedAccount<'info>,
+    pub session_token: Account<'info, SessionTokenV2>,
+    pub session_signer: Signer<'info>,
+    /// CHECK: the campaign is only used to bind the automation payer PDA.
+    #[account(address = trust_score.subject @ AidTraceError::InvalidPda)] pub campaign: UncheckedAccount<'info>,
+    /// CHECK: created by authenticated post-commit action only.
+    #[account(mut, seeds = [FRAUD_FLAG_SEED, trust_score.subject.as_ref()], bump)] pub fraud_flag: UncheckedAccount<'info>,
+    /// CHECK: event is created by authenticated post-commit action only.
+    #[account(mut, seeds = [FRAUD_FLAG_EVENT_SEED, fraud_flag.key().as_ref(), &trust_score.canonical_sequence.to_le_bytes()], bump)] pub fraud_flag_event: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: required destination account for the Magic Action.
+    #[account(address = crate::ID)] pub aidtrace_program: UncheckedAccount<'info>,
+}
+
+impl<'info> SessionV2<'info> for CommitTrustScore<'info> {
+    fn session_token(&self) -> Option<Account<'info, SessionTokenV2>> { Some(self.session_token.clone()) }
+    fn session_signer(&self) -> Signer<'info> { self.session_signer.clone() }
+    fn session_authority(&self) -> Pubkey { self.config.trust_authority }
+    fn target_program(&self) -> Pubkey { crate::ID }
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct UndelegateTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = trust_authority @ AidTraceError::Unauthorized)] pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
+    #[account(mut, seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump = automation_payer.bump, has_one = campaign @ AidTraceError::InvalidPda)] pub automation_payer: Account<'info, TrustAutomationPayer>,
+    /// CHECK: validated by the MagicBlock delegation/fee-vault program during intent execution.
+    #[account(mut)] pub magic_fee_vault: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated score; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&trust_score.key()))]
+    pub trust_score_delegation_record: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated payer; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&automation_payer.key()))]
+    pub automation_payer_delegation_record: UncheckedAccount<'info>,
+    /// CHECK: binds the automation payer to the trust subject.
+    #[account(address = trust_score.subject @ AidTraceError::InvalidPda)] pub campaign: UncheckedAccount<'info>,
+    pub trust_authority: Signer<'info>,
+}
+
+#[action]
+#[derive(Accounts)]
+pub struct UpsertFraudFlagFromTrustScore<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)] pub config: Account<'info, GlobalConfig>,
+    #[account(seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
+    #[account(init_if_needed, payer = escrow, space = FraudFlag::SPACE, seeds = [FRAUD_FLAG_SEED, trust_score.subject.as_ref()], bump)] pub fraud_flag: Account<'info, FraudFlag>,
+    #[account(init_if_needed, payer = escrow, space = FraudFlagEvent::SPACE, seeds = [FRAUD_FLAG_EVENT_SEED, fraud_flag.key().as_ref(), &trust_score.canonical_sequence.to_le_bytes()], bump)] pub fraud_flag_event: Account<'info, FraudFlagEvent>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: pins the action destination to this program.
+    #[account(address = crate::ID @ AidTraceError::ActionOnly)] pub source_program: UncheckedAccount<'info>,
+    /// CHECK: must be the per-campaign automation payer used by the commit.
+    #[account(seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump)] pub escrow_auth: UncheckedAccount<'info>,
+    /// CHECK: delegation program action escrow is the only permitted payer/signer.
+    #[account(mut, signer @ AidTraceError::ActionOnly, address = ephemeral_rollups_sdk::pda::ephemeral_balance_pda_from_payer(&escrow_auth.key(), 255) @ AidTraceError::ActionOnly)] pub escrow: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ResolveFraudFlag<'info> {
+    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ AidTraceError::Unauthorized)] pub config: Account<'info, GlobalConfig>,
+    #[account(mut, seeds = [FRAUD_FLAG_SEED, fraud_flag.subject.as_ref()], bump = fraud_flag.bump)] pub fraud_flag: Account<'info, FraudFlag>,
+    pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
 #[instruction(metadata_digest: [u8; 32])]
 pub struct RegisterOrganization<'info> {
     #[account(
@@ -921,6 +1320,7 @@ fn validate_campaign_uri(uri: &str) -> Result<()> {
 fn initialize_global_config(config: &mut GlobalConfig, deployer: Pubkey, bump: u8) {
     config.admin = deployer;
     config.treasury_authority = deployer;
+    config.trust_authority = deployer;
     config.fraud_threshold = DEFAULT_FRAUD_THRESHOLD;
     config.paused = false;
     config.protocol_version = PROTOCOL_VERSION;
@@ -1102,6 +1502,7 @@ mod tests {
         let mut config = GlobalConfig {
             admin: Pubkey::default(),
             treasury_authority: Pubkey::default(),
+            trust_authority: Pubkey::default(),
             fraud_threshold: 0,
             paused: true,
             protocol_version: 0,
@@ -1153,6 +1554,7 @@ mod tests {
 
         assert_eq!(config.admin, authority);
         assert_eq!(config.treasury_authority, authority);
+        assert_eq!(config.trust_authority, authority);
         assert!(!config.paused);
         assert_eq!(organization.status, OrganizationStatus::Pending);
         assert!(!organization.verified);
@@ -1173,13 +1575,13 @@ mod tests {
 
     #[test]
     fn account_spaces_include_discriminators() {
-        assert_eq!(GlobalConfig::SPACE, 77);
+        assert_eq!(GlobalConfig::SPACE, 109);
         assert_eq!(Organization::SPACE, 156);
         assert_eq!(Campaign::SPACE, 683);
         assert_eq!(Allocation::SPACE, 146);
         assert_eq!(Disbursement::SPACE, 202);
         assert_eq!(DeliveryVerification::SPACE, 123);
-        assert_eq!(TrustScore::SPACE, 92);
+        assert_eq!(TrustScore::SPACE, 132);
         assert_eq!(FraudFlag::SPACE, 84);
         assert_eq!(FundingCounter::SPACE, 73);
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { address, type Address, type Instruction } from "@solana/kit";
 import { WalletButton } from "../../components/wallet-button";
@@ -56,7 +56,7 @@ function lamports(value: string) {
   );
 }
 
-export default function FinancePage() {
+function FinancePageClient() {
   const { wallet } = useWallet();
   const { cluster, getExplorerUrl } = useCluster();
   const { send, isSending } = useSendTransaction();
@@ -870,5 +870,13 @@ export default function FinancePage() {
         </>
       )}
     </main>
+  );
+}
+
+export default function FinancePage() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-6xl px-5 py-10">Loading finance…</main>}>
+      <FinancePageClient />
+    </Suspense>
   );
 }

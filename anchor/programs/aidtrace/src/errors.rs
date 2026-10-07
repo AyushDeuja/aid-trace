@@ -32,6 +32,14 @@ pub enum AidTraceError {
     InvalidAccountOwner,
     #[msg("The supplied sequence number is invalid")]
     InvalidSequence,
+    #[msg("The trust configuration must be migrated before this instruction can run")]
+    TrustConfigurationNotMigrated,
+    #[msg("The trust evaluation timestamp or checkpoint is stale")]
+    StaleTrustEvaluation,
+    #[msg("The supplied Session Key is invalid, expired, revoked, or out of scope")]
+    InvalidTrustSession,
+    #[msg("This instruction may only run as a Magic Action")]
+    ActionOnly,
     #[msg("The campaign does not have enough unreserved funds")]
     InsufficientAvailableFunds,
     #[msg("The allocation does not have enough unspent funds")]

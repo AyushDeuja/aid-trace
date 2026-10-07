@@ -1,8 +1,6 @@
 export type FraudCluster = "devnet" | "localnet";
 export type FraudDisposition =
-  | "needs_investigation"
-  | "confirmed_fraud"
-  | "false_positive";
+  "needs_investigation" | "confirmed_fraud" | "false_positive";
 export type FraudReason = {
   code: string;
   message: string;
@@ -30,6 +28,21 @@ export type FraudSubject = {
   reasons: FraudReason[];
   features: Record<string, unknown>;
 };
+export type TrustWriteStatus = {
+  status: "pending" | "processing" | "committed" | "action_pending" | "failed";
+  /** Assigned by the worker at subject-serialized claim time. */
+  expected_sequence: string | number | null;
+  er_signature: string | null;
+  base_commit_signature: string | null;
+  action_outcome: string | null;
+  error_class: string | null;
+  error_message: string | null;
+  attempts: number;
+  er_endpoint: string | null;
+  session_public_key: string | null;
+  session_expires_at: string | null;
+  terminal: boolean;
+};
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -56,22 +69,29 @@ function reasons(value: unknown): FraudReason[] {
       typeof record.weight !== "number"
     )
       return [];
-    return [{
-      code: record.code,
-      message: record.message,
-      weight: record.weight,
-      source_addresses: Array.isArray(record.source_addresses)
-        ? record.source_addresses.filter((address): address is string => typeof address === "string")
-        : [],
-    }];
+    return [
+      {
+        code: record.code,
+        message: record.message,
+        weight: record.weight,
+        source_addresses: Array.isArray(record.source_addresses)
+          ? record.source_addresses.filter(
+              (address): address is string => typeof address === "string"
+            )
+          : [],
+      },
+    ];
   });
 }
 function risk(value: unknown): "low" | "medium" | "high" | null {
-  return value === "low" || value === "medium" || value === "high" ? value : null;
+  return value === "low" || value === "medium" || value === "high"
+    ? value
+    : null;
 }
 
 export function parseFindings(value: unknown): FraudFinding[] {
-  if (!Array.isArray(value)) throw new Error("Fraud service returned an invalid finding list");
+  if (!Array.isArray(value))
+    throw new Error("Fraud service returned an invalid finding list");
   return value.flatMap((item) => {
     const row = object(item);
     const severity = risk(row?.severity);
@@ -88,17 +108,19 @@ export function parseFindings(value: unknown): FraudFinding[] {
       typeof row.created_at !== "string"
     )
       return [];
-    return [{
-      id: row.id,
-      subject_address: row.subject_address,
-      severity,
-      status: row.status === "reviewed" ? "reviewed" : "open",
-      score: row.score,
-      risk_band: riskBand,
-      model_version: row.model_version,
-      reasons: reasons(row.reasons_json),
-      created_at: row.created_at,
-    }];
+    return [
+      {
+        id: row.id,
+        subject_address: row.subject_address,
+        severity,
+        status: row.status === "reviewed" ? "reviewed" : "open",
+        score: row.score,
+        risk_band: riskBand,
+        model_version: row.model_version,
+        reasons: reasons(row.reasons_json),
+        created_at: row.created_at,
+      },
+    ];
   });
 }
 
@@ -113,7 +135,8 @@ export function parseSubject(value: unknown): FraudSubject {
     typeof row.subject_address !== "string" ||
     typeof row.score !== "number" ||
     typeof row.model_version !== "string" ||
-    (typeof row.checkpoint_slot !== "string" && typeof row.checkpoint_slot !== "number")
+    (typeof row.checkpoint_slot !== "string" &&
+      typeof row.checkpoint_slot !== "number")
   )
     throw new Error("Fraud service returned invalid subject data");
   return {
@@ -121,7 +144,10 @@ export function parseSubject(value: unknown): FraudSubject {
     score: row.score,
     risk_band: riskBand,
     model_version: row.model_version,
-    checkpoint_signature: typeof row.checkpoint_signature === "string" ? row.checkpoint_signature : null,
+    checkpoint_signature:
+      typeof row.checkpoint_signature === "string"
+        ? row.checkpoint_signature
+        : null,
     checkpoint_slot: row.checkpoint_slot,
     reasons: reasons(row.reasons_json),
     features,
@@ -130,4 +156,55 @@ export function parseSubject(value: unknown): FraudSubject {
 
 export function isFraudCluster(value: string | null): value is FraudCluster {
   return value === "devnet" || value === "localnet";
+}
+
+export function parseTrustWriteStatus(value: unknown): TrustWriteStatus {
+  const row = object(value);
+  if (
+    !row ||
+    typeof row.status !== "string" ||
+    (row.expected_sequence !== null &&
+      typeof row.expected_sequence !== "string" &&
+      typeof row.expected_sequence !== "number")
+  )
+    throw new Error("Fraud service returned invalid trust status");
+  if (
+    row.status !== "pending" &&
+    row.status !== "processing" &&
+    row.status !== "committed" &&
+    row.status !== "action_pending" &&
+    row.status !== "failed"
+  )
+    throw new Error("Fraud service returned invalid trust status");
+  if (
+    typeof row.attempts !== "number" ||
+    (row.terminal !== undefined && typeof row.terminal !== "boolean")
+  )
+    throw new Error("Fraud service returned invalid trust status");
+  return {
+    status: row.status,
+    expected_sequence: row.expected_sequence as string | number | null,
+    er_signature:
+      typeof row.er_signature === "string" ? row.er_signature : null,
+    base_commit_signature:
+      typeof row.base_commit_signature === "string"
+        ? row.base_commit_signature
+        : null,
+    action_outcome:
+      typeof row.action_outcome === "string" ? row.action_outcome : null,
+    error_class: typeof row.error_class === "string" ? row.error_class : null,
+    error_message:
+      typeof row.error_message === "string" ? row.error_message : null,
+    attempts: row.attempts,
+    er_endpoint: typeof row.er_endpoint === "string" ? row.er_endpoint : null,
+    session_public_key:
+      typeof row.session_public_key === "string"
+        ? row.session_public_key
+        : null,
+    session_expires_at:
+      typeof row.session_expires_at === "string"
+        ? row.session_expires_at
+        : null,
+    terminal: row.terminal === true,
+  };
 }

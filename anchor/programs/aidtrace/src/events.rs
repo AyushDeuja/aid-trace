@@ -180,6 +180,14 @@ pub struct TrustScoreCommitted {
 }
 
 #[event]
+pub struct TrustAuthorityChanged {
+    pub config: Pubkey,
+    pub previous_authority: Pubkey,
+    pub next_authority: Pubkey,
+    pub occurred_at: i64,
+}
+
+#[event]
 pub struct FraudFlagRaised {
     pub fraud_flag: Pubkey,
     pub subject: Pubkey,

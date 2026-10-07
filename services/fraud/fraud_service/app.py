@@ -43,6 +43,16 @@ def subject(address: str, cluster: Literal["devnet", "localnet"] = "devnet") -> 
         raise HTTPException(status_code=404, detail="No advisory evaluation exists for this subject")
     return result
 
+@app.get("/v1/subjects/{address}/trust")
+def trust_status(address: str, cluster: Literal["devnet", "localnet"] = "devnet") -> dict:
+    try:
+        result = FraudRepository().trust_status(cluster, address)
+    except Exception as error:
+        raise service_error(error) from error
+    if not result:
+        raise HTTPException(status_code=404, detail="No trust write exists for this subject")
+    return result
+
 @app.get("/v1/findings")
 def findings(cluster: Literal["devnet", "localnet"] = "devnet", severity: Literal["medium", "high"] | None = Query(default=None)) -> list[dict]:
     try:

@@ -44,12 +44,21 @@ export const AIDTRACE_ERROR__INVALID_PDA = 0x177c; // 6012
 export const AIDTRACE_ERROR__INVALID_ACCOUNT_OWNER = 0x177d; // 6013
 /** InvalidSequence: The supplied sequence number is invalid */
 export const AIDTRACE_ERROR__INVALID_SEQUENCE = 0x177e; // 6014
+/** TrustConfigurationNotMigrated: The trust configuration must be migrated before this instruction can run */
+export const AIDTRACE_ERROR__TRUST_CONFIGURATION_NOT_MIGRATED = 0x177f; // 6015
+/** StaleTrustEvaluation: The trust evaluation timestamp or checkpoint is stale */
+export const AIDTRACE_ERROR__STALE_TRUST_EVALUATION = 0x1780; // 6016
+/** InvalidTrustSession: The supplied Session Key is invalid, expired, revoked, or out of scope */
+export const AIDTRACE_ERROR__INVALID_TRUST_SESSION = 0x1781; // 6017
+/** ActionOnly: This instruction may only run as a Magic Action */
+export const AIDTRACE_ERROR__ACTION_ONLY = 0x1782; // 6018
 /** InsufficientAvailableFunds: The campaign does not have enough unreserved funds */
-export const AIDTRACE_ERROR__INSUFFICIENT_AVAILABLE_FUNDS = 0x177f; // 6015
+export const AIDTRACE_ERROR__INSUFFICIENT_AVAILABLE_FUNDS = 0x1783; // 6019
 /** InsufficientAllocationFunds: The allocation does not have enough unspent funds */
-export const AIDTRACE_ERROR__INSUFFICIENT_ALLOCATION_FUNDS = 0x1780; // 6016
+export const AIDTRACE_ERROR__INSUFFICIENT_ALLOCATION_FUNDS = 0x1784; // 6020
 
 export type AidtraceError =
+  | typeof AIDTRACE_ERROR__ACTION_ONLY
   | typeof AIDTRACE_ERROR__ARITHMETIC_OVERFLOW
   | typeof AIDTRACE_ERROR__CONFIGURATION_ALREADY_INITIALIZED
   | typeof AIDTRACE_ERROR__COUNTER_EXHAUSTED
@@ -63,14 +72,18 @@ export type AidtraceError =
   | typeof AIDTRACE_ERROR__INVALID_PDA
   | typeof AIDTRACE_ERROR__INVALID_SEQUENCE
   | typeof AIDTRACE_ERROR__INVALID_STATUS_TRANSITION
+  | typeof AIDTRACE_ERROR__INVALID_TRUST_SESSION
   | typeof AIDTRACE_ERROR__ORGANIZATION_NOT_ACTIVE
   | typeof AIDTRACE_ERROR__ORGANIZATION_NOT_VERIFIED
   | typeof AIDTRACE_ERROR__PROTOCOL_PAUSED
+  | typeof AIDTRACE_ERROR__STALE_TRUST_EVALUATION
+  | typeof AIDTRACE_ERROR__TRUST_CONFIGURATION_NOT_MIGRATED
   | typeof AIDTRACE_ERROR__UNAUTHORIZED;
 
 let aidtraceErrorMessages: Record<AidtraceError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
   aidtraceErrorMessages = {
+    [AIDTRACE_ERROR__ACTION_ONLY]: `This instruction may only run as a Magic Action`,
     [AIDTRACE_ERROR__ARITHMETIC_OVERFLOW]: `Arithmetic overflow or underflow`,
     [AIDTRACE_ERROR__CONFIGURATION_ALREADY_INITIALIZED]: `Global configuration has already been initialized`,
     [AIDTRACE_ERROR__COUNTER_EXHAUSTED]: `A parent-scoped record counter has reached its maximum value`,
@@ -84,9 +97,12 @@ if (process.env.NODE_ENV !== "production") {
     [AIDTRACE_ERROR__INVALID_PDA]: `The supplied account does not match the expected PDA`,
     [AIDTRACE_ERROR__INVALID_SEQUENCE]: `The supplied sequence number is invalid`,
     [AIDTRACE_ERROR__INVALID_STATUS_TRANSITION]: `The requested state transition is invalid`,
+    [AIDTRACE_ERROR__INVALID_TRUST_SESSION]: `The supplied Session Key is invalid, expired, revoked, or out of scope`,
     [AIDTRACE_ERROR__ORGANIZATION_NOT_ACTIVE]: `The organization is not active`,
     [AIDTRACE_ERROR__ORGANIZATION_NOT_VERIFIED]: `The organization is not verified`,
     [AIDTRACE_ERROR__PROTOCOL_PAUSED]: `The protocol is paused`,
+    [AIDTRACE_ERROR__STALE_TRUST_EVALUATION]: `The trust evaluation timestamp or checkpoint is stale`,
+    [AIDTRACE_ERROR__TRUST_CONFIGURATION_NOT_MIGRATED]: `The trust configuration must be migrated before this instruction can run`,
     [AIDTRACE_ERROR__UNAUTHORIZED]: `The supplied authority is not permitted to perform this action`,
   };
 }

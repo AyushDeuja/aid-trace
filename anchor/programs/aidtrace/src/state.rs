@@ -4,6 +4,9 @@ use anchor_lang::prelude::*;
 pub struct GlobalConfig {
     pub admin: Pubkey,
     pub treasury_authority: Pubkey,
+    /// The authority that may provision narrowly scoped trust-writer sessions.
+    /// It is distinct from treasury authority and cannot move funds.
+    pub trust_authority: Pubkey,
     pub fraud_threshold: u8,
     pub paused: bool,
     pub protocol_version: u16,
@@ -11,7 +14,7 @@ pub struct GlobalConfig {
 }
 
 impl GlobalConfig {
-    pub const SPACE: usize = 8 + 32 + 32 + 1 + 1 + 2 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 1 + 1 + 2 + 1;
 }
 
 #[account]
@@ -149,14 +152,28 @@ pub struct TrustScore {
     pub score: u8,
     pub risk_band: RiskBand,
     pub model_version_digest: [u8; 32],
+    pub reason_digest: [u8; 32],
+    pub checkpoint_slot: u64,
     pub evaluated_at: i64,
     pub canonical_sequence: u64,
     pub flagged: bool,
     pub bump: u8,
 }
 
+/// A program-owned PDA delegated with its campaign TrustScore. It is only used
+/// to sponsor MagicBlock commit/action fees; it cannot authorize custody flows.
+#[account]
+pub struct TrustAutomationPayer {
+    pub campaign: Pubkey,
+    pub bump: u8,
+}
+
+impl TrustAutomationPayer {
+    pub const SPACE: usize = 8 + 32 + 1;
+}
+
 impl TrustScore {
-    pub const SPACE: usize = 8 + 32 + 1 + 1 + 32 + 8 + 8 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 1 + 32 + 32 + 8 + 8 + 8 + 1 + 1;
 }
 
 #[account]
@@ -172,6 +189,23 @@ pub struct FraudFlag {
 
 impl FraudFlag {
     pub const SPACE: usize = 8 + 32 + 1 + 1 + 32 + 8 + 1 + 1;
+}
+
+/// Immutable audit record for a threshold action. Its PDA includes the trust
+/// sequence, making retries for one committed score idempotent.
+#[account]
+pub struct FraudFlagEvent {
+    pub fraud_flag: Pubkey,
+    pub subject: Pubkey,
+    pub sequence: u64,
+    pub score: u8,
+    pub reason_digest: [u8; 32],
+    pub occurred_at: i64,
+    pub bump: u8,
+}
+
+impl FraudFlagEvent {
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + 1 + 32 + 8 + 1;
 }
 
 #[account]
