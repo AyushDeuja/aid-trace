@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getStructDecoder,
   getStructEncoder,
   getU64Decoder,
@@ -58,7 +60,8 @@ export type UpdateTrustScoreInstruction<
   TProgram extends string = typeof AIDTRACE_PROGRAM_ADDRESS,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountTrustScore extends string | AccountMeta<string> = string,
-  TAccountTrustAuthority extends string | AccountMeta<string> = string,
+  TAccountSessionToken extends string | AccountMeta<string> = string,
+  TAccountSessionSigner extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -70,10 +73,13 @@ export type UpdateTrustScoreInstruction<
       TAccountTrustScore extends string
         ? WritableAccount<TAccountTrustScore>
         : TAccountTrustScore,
-      TAccountTrustAuthority extends string
-        ? ReadonlySignerAccount<TAccountTrustAuthority> &
-            AccountSignerMeta<TAccountTrustAuthority>
-        : TAccountTrustAuthority,
+      TAccountSessionToken extends string
+        ? ReadonlyAccount<TAccountSessionToken>
+        : TAccountSessionToken,
+      TAccountSessionSigner extends string
+        ? ReadonlySignerAccount<TAccountSessionSigner> &
+            AccountSignerMeta<TAccountSessionSigner>
+        : TAccountSessionSigner,
       ...TRemainingAccounts,
     ]
   >;
@@ -85,6 +91,7 @@ export type UpdateTrustScoreInstructionData = {
   modelVersionDigest: ReadonlyUint8Array;
   reasonDigest: ReadonlyUint8Array;
   checkpointSlot: bigint;
+  evaluatedAt: bigint;
   expectedSequence: bigint;
 };
 
@@ -94,6 +101,7 @@ export type UpdateTrustScoreInstructionDataArgs = {
   modelVersionDigest: ReadonlyUint8Array;
   reasonDigest: ReadonlyUint8Array;
   checkpointSlot: number | bigint;
+  evaluatedAt: number | bigint;
   expectedSequence: number | bigint;
 };
 
@@ -106,6 +114,7 @@ export function getUpdateTrustScoreInstructionDataEncoder(): FixedSizeEncoder<Up
       ["modelVersionDigest", fixEncoderSize(getBytesEncoder(), 32)],
       ["reasonDigest", fixEncoderSize(getBytesEncoder(), 32)],
       ["checkpointSlot", getU64Encoder()],
+      ["evaluatedAt", getI64Encoder()],
       ["expectedSequence", getU64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: UPDATE_TRUST_SCORE_DISCRIMINATOR }),
@@ -120,6 +129,7 @@ export function getUpdateTrustScoreInstructionDataDecoder(): FixedSizeDecoder<Up
     ["modelVersionDigest", fixDecoderSize(getBytesDecoder(), 32)],
     ["reasonDigest", fixDecoderSize(getBytesDecoder(), 32)],
     ["checkpointSlot", getU64Decoder()],
+    ["evaluatedAt", getI64Decoder()],
     ["expectedSequence", getU64Decoder()],
   ]);
 }
@@ -137,29 +147,34 @@ export function getUpdateTrustScoreInstructionDataCodec(): FixedSizeCodec<
 export type UpdateTrustScoreAsyncInput<
   TAccountConfig extends string = string,
   TAccountTrustScore extends string = string,
-  TAccountTrustAuthority extends string = string,
+  TAccountSessionToken extends string = string,
+  TAccountSessionSigner extends string = string,
 > = {
   config?: Address<TAccountConfig>;
   trustScore: Address<TAccountTrustScore>;
-  trustAuthority: TransactionSigner<TAccountTrustAuthority>;
+  sessionToken: Address<TAccountSessionToken>;
+  sessionSigner: TransactionSigner<TAccountSessionSigner>;
   score: UpdateTrustScoreInstructionDataArgs["score"];
   riskBand: UpdateTrustScoreInstructionDataArgs["riskBand"];
   modelVersionDigest: UpdateTrustScoreInstructionDataArgs["modelVersionDigest"];
   reasonDigest: UpdateTrustScoreInstructionDataArgs["reasonDigest"];
   checkpointSlot: UpdateTrustScoreInstructionDataArgs["checkpointSlot"];
+  evaluatedAt: UpdateTrustScoreInstructionDataArgs["evaluatedAt"];
   expectedSequence: UpdateTrustScoreInstructionDataArgs["expectedSequence"];
 };
 
 export async function getUpdateTrustScoreInstructionAsync<
   TAccountConfig extends string,
   TAccountTrustScore extends string,
-  TAccountTrustAuthority extends string,
+  TAccountSessionToken extends string,
+  TAccountSessionSigner extends string,
   TProgramAddress extends Address = typeof AIDTRACE_PROGRAM_ADDRESS,
 >(
   input: UpdateTrustScoreAsyncInput<
     TAccountConfig,
     TAccountTrustScore,
-    TAccountTrustAuthority
+    TAccountSessionToken,
+    TAccountSessionSigner
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -167,7 +182,8 @@ export async function getUpdateTrustScoreInstructionAsync<
     TProgramAddress,
     TAccountConfig,
     TAccountTrustScore,
-    TAccountTrustAuthority
+    TAccountSessionToken,
+    TAccountSessionSigner
   >
 > {
   // Program address.
@@ -177,7 +193,8 @@ export async function getUpdateTrustScoreInstructionAsync<
   const originalAccounts = {
     config: { value: input.config ?? null, isWritable: false },
     trustScore: { value: input.trustScore ?? null, isWritable: true },
-    trustAuthority: { value: input.trustAuthority ?? null, isWritable: false },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
+    sessionSigner: { value: input.sessionSigner ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -197,7 +214,8 @@ export async function getUpdateTrustScoreInstructionAsync<
     accounts: [
       getAccountMeta(accounts.config),
       getAccountMeta(accounts.trustScore),
-      getAccountMeta(accounts.trustAuthority),
+      getAccountMeta(accounts.sessionToken),
+      getAccountMeta(accounts.sessionSigner),
     ],
     data: getUpdateTrustScoreInstructionDataEncoder().encode(
       args as UpdateTrustScoreInstructionDataArgs,
@@ -207,43 +225,50 @@ export async function getUpdateTrustScoreInstructionAsync<
     TProgramAddress,
     TAccountConfig,
     TAccountTrustScore,
-    TAccountTrustAuthority
+    TAccountSessionToken,
+    TAccountSessionSigner
   >);
 }
 
 export type UpdateTrustScoreInput<
   TAccountConfig extends string = string,
   TAccountTrustScore extends string = string,
-  TAccountTrustAuthority extends string = string,
+  TAccountSessionToken extends string = string,
+  TAccountSessionSigner extends string = string,
 > = {
   config: Address<TAccountConfig>;
   trustScore: Address<TAccountTrustScore>;
-  trustAuthority: TransactionSigner<TAccountTrustAuthority>;
+  sessionToken: Address<TAccountSessionToken>;
+  sessionSigner: TransactionSigner<TAccountSessionSigner>;
   score: UpdateTrustScoreInstructionDataArgs["score"];
   riskBand: UpdateTrustScoreInstructionDataArgs["riskBand"];
   modelVersionDigest: UpdateTrustScoreInstructionDataArgs["modelVersionDigest"];
   reasonDigest: UpdateTrustScoreInstructionDataArgs["reasonDigest"];
   checkpointSlot: UpdateTrustScoreInstructionDataArgs["checkpointSlot"];
+  evaluatedAt: UpdateTrustScoreInstructionDataArgs["evaluatedAt"];
   expectedSequence: UpdateTrustScoreInstructionDataArgs["expectedSequence"];
 };
 
 export function getUpdateTrustScoreInstruction<
   TAccountConfig extends string,
   TAccountTrustScore extends string,
-  TAccountTrustAuthority extends string,
+  TAccountSessionToken extends string,
+  TAccountSessionSigner extends string,
   TProgramAddress extends Address = typeof AIDTRACE_PROGRAM_ADDRESS,
 >(
   input: UpdateTrustScoreInput<
     TAccountConfig,
     TAccountTrustScore,
-    TAccountTrustAuthority
+    TAccountSessionToken,
+    TAccountSessionSigner
   >,
   config?: { programAddress?: TProgramAddress },
 ): UpdateTrustScoreInstruction<
   TProgramAddress,
   TAccountConfig,
   TAccountTrustScore,
-  TAccountTrustAuthority
+  TAccountSessionToken,
+  TAccountSessionSigner
 > {
   // Program address.
   const programAddress = config?.programAddress ?? AIDTRACE_PROGRAM_ADDRESS;
@@ -252,7 +277,8 @@ export function getUpdateTrustScoreInstruction<
   const originalAccounts = {
     config: { value: input.config ?? null, isWritable: false },
     trustScore: { value: input.trustScore ?? null, isWritable: true },
-    trustAuthority: { value: input.trustAuthority ?? null, isWritable: false },
+    sessionToken: { value: input.sessionToken ?? null, isWritable: false },
+    sessionSigner: { value: input.sessionSigner ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -267,7 +293,8 @@ export function getUpdateTrustScoreInstruction<
     accounts: [
       getAccountMeta(accounts.config),
       getAccountMeta(accounts.trustScore),
-      getAccountMeta(accounts.trustAuthority),
+      getAccountMeta(accounts.sessionToken),
+      getAccountMeta(accounts.sessionSigner),
     ],
     data: getUpdateTrustScoreInstructionDataEncoder().encode(
       args as UpdateTrustScoreInstructionDataArgs,
@@ -277,7 +304,8 @@ export function getUpdateTrustScoreInstruction<
     TProgramAddress,
     TAccountConfig,
     TAccountTrustScore,
-    TAccountTrustAuthority
+    TAccountSessionToken,
+    TAccountSessionSigner
   >);
 }
 
@@ -289,7 +317,8 @@ export type ParsedUpdateTrustScoreInstruction<
   accounts: {
     config: TAccountMetas[0];
     trustScore: TAccountMetas[1];
-    trustAuthority: TAccountMetas[2];
+    sessionToken: TAccountMetas[2];
+    sessionSigner: TAccountMetas[3];
   };
   data: UpdateTrustScoreInstructionData;
 };
@@ -302,7 +331,7 @@ export function parseUpdateTrustScoreInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedUpdateTrustScoreInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 4) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
   }
@@ -317,7 +346,8 @@ export function parseUpdateTrustScoreInstruction<
     accounts: {
       config: getNextAccount(),
       trustScore: getNextAccount(),
-      trustAuthority: getNextAccount(),
+      sessionToken: getNextAccount(),
+      sessionSigner: getNextAccount(),
     },
     data: getUpdateTrustScoreInstructionDataDecoder().decode(instruction.data),
   };

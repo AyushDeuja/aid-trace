@@ -954,9 +954,9 @@ pub struct DelegateTrustScore<'info> {
     #[account(seeds = [ORGANIZATION_SEED, organization.founder.as_ref()], bump = organization.bump)]
     pub organization: Account<'info, Organization>,
     #[account(mut, del, seeds = [TRUST_SCORE_SEED, campaign.key().as_ref()], bump)]
-    pub trust_score: AccountInfo<'info>,
+    pub trust_score: UncheckedAccount<'info>,
     #[account(mut, del, seeds = [TRUST_AUTOMATION_PAYER_SEED, campaign.key().as_ref()], bump)]
-    pub automation_payer: AccountInfo<'info>,
+    pub automation_payer: UncheckedAccount<'info>,
     #[account(mut)] pub trust_authority: Signer<'info>,
 }
 

@@ -8,12 +8,16 @@
 
 export * from "./acceptOrganizationAuthority";
 export * from "./cancelAllocation";
+export * from "./commitTrustScore";
 export * from "./createAllocation";
 export * from "./createCampaign";
+export * from "./delegateTrustScore";
 export * from "./donate";
 export * from "./initializeConfig";
 export * from "./initializeTrustScore";
+export * from "./migrateGlobalConfigV2";
 export * from "./nominateOrganizationAuthority";
+export * from "./processUndelegation";
 export * from "./recordDisbursement";
 export * from "./registerOrganization";
 export * from "./registerVerifier";
@@ -24,8 +28,9 @@ export * from "./setOrganizationStatus";
 export * from "./setOrganizationVerified";
 export * from "./setTrustAuthority";
 export * from "./submitCampaign";
+export * from "./undelegateTrustScore";
 export * from "./updateCampaign";
 export * from "./updateOrganizationMetadata";
 export * from "./updateTrustScore";
-export * from "./upsertFraudFlag";
+export * from "./upsertFraudFlagFromTrustScore";
 export * from "./verifyDelivery";

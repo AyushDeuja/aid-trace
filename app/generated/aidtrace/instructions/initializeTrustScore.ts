@@ -14,6 +14,8 @@ import {
   getBytesEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU64Decoder,
+  getU64Encoder,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -30,7 +32,11 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
-import { findConfigPda, findTrustScorePda } from "../pdas";
+import {
+  findAutomationPayerPda,
+  findConfigPda,
+  findTrustScorePda,
+} from "../pdas";
 import { AIDTRACE_PROGRAM_ADDRESS } from "../programs";
 import {
   expectAddress,
@@ -54,7 +60,8 @@ export type InitializeTrustScoreInstruction<
   TAccountCampaign extends string | AccountMeta<string> = string,
   TAccountOrganization extends string | AccountMeta<string> = string,
   TAccountTrustScore extends string | AccountMeta<string> = string,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountAutomationPayer extends string | AccountMeta<string> = string,
+  TAccountTrustAuthority extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -74,10 +81,13 @@ export type InitializeTrustScoreInstruction<
       TAccountTrustScore extends string
         ? WritableAccount<TAccountTrustScore>
         : TAccountTrustScore,
-      TAccountAdmin extends string
-        ? WritableSignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountAutomationPayer extends string
+        ? WritableAccount<TAccountAutomationPayer>
+        : TAccountAutomationPayer,
+      TAccountTrustAuthority extends string
+        ? WritableSignerAccount<TAccountTrustAuthority> &
+            AccountSignerMeta<TAccountTrustAuthority>
+        : TAccountTrustAuthority,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -87,13 +97,19 @@ export type InitializeTrustScoreInstruction<
 
 export type InitializeTrustScoreInstructionData = {
   discriminator: ReadonlyUint8Array;
+  automationLamports: bigint;
 };
 
-export type InitializeTrustScoreInstructionDataArgs = {};
+export type InitializeTrustScoreInstructionDataArgs = {
+  automationLamports: number | bigint;
+};
 
 export function getInitializeTrustScoreInstructionDataEncoder(): FixedSizeEncoder<InitializeTrustScoreInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["automationLamports", getU64Encoder()],
+    ]),
     (value) => ({
       ...value,
       discriminator: INITIALIZE_TRUST_SCORE_DISCRIMINATOR,
@@ -104,6 +120,7 @@ export function getInitializeTrustScoreInstructionDataEncoder(): FixedSizeEncode
 export function getInitializeTrustScoreInstructionDataDecoder(): FixedSizeDecoder<InitializeTrustScoreInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["automationLamports", getU64Decoder()],
   ]);
 }
 
@@ -122,15 +139,18 @@ export type InitializeTrustScoreAsyncInput<
   TAccountCampaign extends string = string,
   TAccountOrganization extends string = string,
   TAccountTrustScore extends string = string,
-  TAccountAdmin extends string = string,
+  TAccountAutomationPayer extends string = string,
+  TAccountTrustAuthority extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   config?: Address<TAccountConfig>;
   campaign: Address<TAccountCampaign>;
   organization: Address<TAccountOrganization>;
   trustScore?: Address<TAccountTrustScore>;
-  admin: TransactionSigner<TAccountAdmin>;
+  automationPayer?: Address<TAccountAutomationPayer>;
+  trustAuthority: TransactionSigner<TAccountTrustAuthority>;
   systemProgram?: Address<TAccountSystemProgram>;
+  automationLamports: InitializeTrustScoreInstructionDataArgs["automationLamports"];
 };
 
 export async function getInitializeTrustScoreInstructionAsync<
@@ -138,7 +158,8 @@ export async function getInitializeTrustScoreInstructionAsync<
   TAccountCampaign extends string,
   TAccountOrganization extends string,
   TAccountTrustScore extends string,
-  TAccountAdmin extends string,
+  TAccountAutomationPayer extends string,
+  TAccountTrustAuthority extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AIDTRACE_PROGRAM_ADDRESS,
 >(
@@ -147,7 +168,8 @@ export async function getInitializeTrustScoreInstructionAsync<
     TAccountCampaign,
     TAccountOrganization,
     TAccountTrustScore,
-    TAccountAdmin,
+    TAccountAutomationPayer,
+    TAccountTrustAuthority,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -158,7 +180,8 @@ export async function getInitializeTrustScoreInstructionAsync<
     TAccountCampaign,
     TAccountOrganization,
     TAccountTrustScore,
-    TAccountAdmin,
+    TAccountAutomationPayer,
+    TAccountTrustAuthority,
     TAccountSystemProgram
   >
 > {
@@ -171,7 +194,8 @@ export async function getInitializeTrustScoreInstructionAsync<
     campaign: { value: input.campaign ?? null, isWritable: false },
     organization: { value: input.organization ?? null, isWritable: false },
     trustScore: { value: input.trustScore ?? null, isWritable: true },
-    admin: { value: input.admin ?? null, isWritable: true },
+    automationPayer: { value: input.automationPayer ?? null, isWritable: true },
+    trustAuthority: { value: input.trustAuthority ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -179,12 +203,20 @@ export async function getInitializeTrustScoreInstructionAsync<
     ResolvedAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.config.value) {
     accounts.config.value = await findConfigPda();
   }
   if (!accounts.trustScore.value) {
     accounts.trustScore.value = await findTrustScorePda({
+      campaign: expectAddress(accounts.campaign.value),
+    });
+  }
+  if (!accounts.automationPayer.value) {
+    accounts.automationPayer.value = await findAutomationPayerPda({
       campaign: expectAddress(accounts.campaign.value),
     });
   }
@@ -200,10 +232,13 @@ export async function getInitializeTrustScoreInstructionAsync<
       getAccountMeta(accounts.campaign),
       getAccountMeta(accounts.organization),
       getAccountMeta(accounts.trustScore),
-      getAccountMeta(accounts.admin),
+      getAccountMeta(accounts.automationPayer),
+      getAccountMeta(accounts.trustAuthority),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getInitializeTrustScoreInstructionDataEncoder().encode({}),
+    data: getInitializeTrustScoreInstructionDataEncoder().encode(
+      args as InitializeTrustScoreInstructionDataArgs,
+    ),
     programAddress,
   } as InitializeTrustScoreInstruction<
     TProgramAddress,
@@ -211,7 +246,8 @@ export async function getInitializeTrustScoreInstructionAsync<
     TAccountCampaign,
     TAccountOrganization,
     TAccountTrustScore,
-    TAccountAdmin,
+    TAccountAutomationPayer,
+    TAccountTrustAuthority,
     TAccountSystemProgram
   >);
 }
@@ -221,15 +257,18 @@ export type InitializeTrustScoreInput<
   TAccountCampaign extends string = string,
   TAccountOrganization extends string = string,
   TAccountTrustScore extends string = string,
-  TAccountAdmin extends string = string,
+  TAccountAutomationPayer extends string = string,
+  TAccountTrustAuthority extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
   config: Address<TAccountConfig>;
   campaign: Address<TAccountCampaign>;
   organization: Address<TAccountOrganization>;
   trustScore: Address<TAccountTrustScore>;
-  admin: TransactionSigner<TAccountAdmin>;
+  automationPayer: Address<TAccountAutomationPayer>;
+  trustAuthority: TransactionSigner<TAccountTrustAuthority>;
   systemProgram?: Address<TAccountSystemProgram>;
+  automationLamports: InitializeTrustScoreInstructionDataArgs["automationLamports"];
 };
 
 export function getInitializeTrustScoreInstruction<
@@ -237,7 +276,8 @@ export function getInitializeTrustScoreInstruction<
   TAccountCampaign extends string,
   TAccountOrganization extends string,
   TAccountTrustScore extends string,
-  TAccountAdmin extends string,
+  TAccountAutomationPayer extends string,
+  TAccountTrustAuthority extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof AIDTRACE_PROGRAM_ADDRESS,
 >(
@@ -246,7 +286,8 @@ export function getInitializeTrustScoreInstruction<
     TAccountCampaign,
     TAccountOrganization,
     TAccountTrustScore,
-    TAccountAdmin,
+    TAccountAutomationPayer,
+    TAccountTrustAuthority,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -256,7 +297,8 @@ export function getInitializeTrustScoreInstruction<
   TAccountCampaign,
   TAccountOrganization,
   TAccountTrustScore,
-  TAccountAdmin,
+  TAccountAutomationPayer,
+  TAccountTrustAuthority,
   TAccountSystemProgram
 > {
   // Program address.
@@ -268,13 +310,17 @@ export function getInitializeTrustScoreInstruction<
     campaign: { value: input.campaign ?? null, isWritable: false },
     organization: { value: input.organization ?? null, isWritable: false },
     trustScore: { value: input.trustScore ?? null, isWritable: true },
-    admin: { value: input.admin ?? null, isWritable: true },
+    automationPayer: { value: input.automationPayer ?? null, isWritable: true },
+    trustAuthority: { value: input.trustAuthority ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
     ResolvedAccount
   >;
+
+  // Original args.
+  const args = { ...input };
 
   // Resolve default values.
   if (!accounts.systemProgram.value) {
@@ -289,10 +335,13 @@ export function getInitializeTrustScoreInstruction<
       getAccountMeta(accounts.campaign),
       getAccountMeta(accounts.organization),
       getAccountMeta(accounts.trustScore),
-      getAccountMeta(accounts.admin),
+      getAccountMeta(accounts.automationPayer),
+      getAccountMeta(accounts.trustAuthority),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getInitializeTrustScoreInstructionDataEncoder().encode({}),
+    data: getInitializeTrustScoreInstructionDataEncoder().encode(
+      args as InitializeTrustScoreInstructionDataArgs,
+    ),
     programAddress,
   } as InitializeTrustScoreInstruction<
     TProgramAddress,
@@ -300,7 +349,8 @@ export function getInitializeTrustScoreInstruction<
     TAccountCampaign,
     TAccountOrganization,
     TAccountTrustScore,
-    TAccountAdmin,
+    TAccountAutomationPayer,
+    TAccountTrustAuthority,
     TAccountSystemProgram
   >);
 }
@@ -315,8 +365,9 @@ export type ParsedInitializeTrustScoreInstruction<
     campaign: TAccountMetas[1];
     organization: TAccountMetas[2];
     trustScore: TAccountMetas[3];
-    admin: TAccountMetas[4];
-    systemProgram: TAccountMetas[5];
+    automationPayer: TAccountMetas[4];
+    trustAuthority: TAccountMetas[5];
+    systemProgram: TAccountMetas[6];
   };
   data: InitializeTrustScoreInstructionData;
 };
@@ -329,7 +380,7 @@ export function parseInitializeTrustScoreInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitializeTrustScoreInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 7) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
   }
@@ -346,7 +397,8 @@ export function parseInitializeTrustScoreInstruction<
       campaign: getNextAccount(),
       organization: getNextAccount(),
       trustScore: getNextAccount(),
-      admin: getNextAccount(),
+      automationPayer: getNextAccount(),
+      trustAuthority: getNextAccount(),
       systemProgram: getNextAccount(),
     },
     data: getInitializeTrustScoreInstructionDataDecoder().decode(

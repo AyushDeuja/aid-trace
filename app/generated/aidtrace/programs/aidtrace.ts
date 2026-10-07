@@ -19,12 +19,16 @@ import {
 import {
   parseAcceptOrganizationAuthorityInstruction,
   parseCancelAllocationInstruction,
+  parseCommitTrustScoreInstruction,
   parseCreateAllocationInstruction,
   parseCreateCampaignInstruction,
+  parseDelegateTrustScoreInstruction,
   parseDonateInstruction,
   parseInitializeConfigInstruction,
   parseInitializeTrustScoreInstruction,
+  parseMigrateGlobalConfigV2Instruction,
   parseNominateOrganizationAuthorityInstruction,
+  parseProcessUndelegationInstruction,
   parseRecordDisbursementInstruction,
   parseRegisterOrganizationInstruction,
   parseRegisterVerifierInstruction,
@@ -35,19 +39,24 @@ import {
   parseSetOrganizationVerifiedInstruction,
   parseSetTrustAuthorityInstruction,
   parseSubmitCampaignInstruction,
+  parseUndelegateTrustScoreInstruction,
   parseUpdateCampaignInstruction,
   parseUpdateOrganizationMetadataInstruction,
   parseUpdateTrustScoreInstruction,
-  parseUpsertFraudFlagInstruction,
+  parseUpsertFraudFlagFromTrustScoreInstruction,
   parseVerifyDeliveryInstruction,
   type ParsedAcceptOrganizationAuthorityInstruction,
   type ParsedCancelAllocationInstruction,
+  type ParsedCommitTrustScoreInstruction,
   type ParsedCreateAllocationInstruction,
   type ParsedCreateCampaignInstruction,
+  type ParsedDelegateTrustScoreInstruction,
   type ParsedDonateInstruction,
   type ParsedInitializeConfigInstruction,
   type ParsedInitializeTrustScoreInstruction,
+  type ParsedMigrateGlobalConfigV2Instruction,
   type ParsedNominateOrganizationAuthorityInstruction,
+  type ParsedProcessUndelegationInstruction,
   type ParsedRecordDisbursementInstruction,
   type ParsedRegisterOrganizationInstruction,
   type ParsedRegisterVerifierInstruction,
@@ -58,10 +67,11 @@ import {
   type ParsedSetOrganizationVerifiedInstruction,
   type ParsedSetTrustAuthorityInstruction,
   type ParsedSubmitCampaignInstruction,
+  type ParsedUndelegateTrustScoreInstruction,
   type ParsedUpdateCampaignInstruction,
   type ParsedUpdateOrganizationMetadataInstruction,
   type ParsedUpdateTrustScoreInstruction,
-  type ParsedUpsertFraudFlagInstruction,
+  type ParsedUpsertFraudFlagFromTrustScoreInstruction,
   type ParsedVerifyDeliveryInstruction,
 } from "../instructions";
 
@@ -76,8 +86,10 @@ export enum AidtraceAccount {
   Disbursement,
   Donation,
   FraudFlag,
+  FraudFlagEvent,
   GlobalConfig,
   Organization,
+  TrustAutomationPayer,
   TrustScore,
   Verifier,
 }
@@ -167,6 +179,17 @@ export function identifyAidtraceAccount(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([205, 6, 76, 245, 83, 216, 71, 227]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceAccount.FraudFlagEvent;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([149, 8, 156, 202, 160, 252, 176, 217]),
       ),
       0,
@@ -184,6 +207,17 @@ export function identifyAidtraceAccount(
     )
   ) {
     return AidtraceAccount.Organization;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([175, 174, 183, 92, 102, 206, 102, 252]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceAccount.TrustAutomationPayer;
   }
   if (
     containsBytes(
@@ -215,12 +249,16 @@ export function identifyAidtraceAccount(
 export enum AidtraceInstruction {
   AcceptOrganizationAuthority,
   CancelAllocation,
+  CommitTrustScore,
   CreateAllocation,
   CreateCampaign,
+  DelegateTrustScore,
   Donate,
   InitializeConfig,
   InitializeTrustScore,
+  MigrateGlobalConfigV2,
   NominateOrganizationAuthority,
+  ProcessUndelegation,
   RecordDisbursement,
   RegisterOrganization,
   RegisterVerifier,
@@ -231,10 +269,11 @@ export enum AidtraceInstruction {
   SetOrganizationVerified,
   SetTrustAuthority,
   SubmitCampaign,
+  UndelegateTrustScore,
   UpdateCampaign,
   UpdateOrganizationMetadata,
   UpdateTrustScore,
-  UpsertFraudFlag,
+  UpsertFraudFlagFromTrustScore,
   VerifyDelivery,
 }
 
@@ -268,6 +307,17 @@ export function identifyAidtraceInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([45, 44, 254, 206, 7, 145, 200, 38]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.CommitTrustScore;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([98, 201, 189, 117, 160, 160, 157, 141]),
       ),
       0,
@@ -285,6 +335,17 @@ export function identifyAidtraceInstruction(
     )
   ) {
     return AidtraceInstruction.CreateCampaign;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([218, 46, 53, 228, 83, 17, 90, 200]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.DelegateTrustScore;
   }
   if (
     containsBytes(
@@ -323,12 +384,34 @@ export function identifyAidtraceInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([229, 122, 76, 110, 29, 165, 27, 25]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.MigrateGlobalConfigV2;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([2, 177, 127, 199, 243, 124, 153, 88]),
       ),
       0,
     )
   ) {
     return AidtraceInstruction.NominateOrganizationAuthority;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([196, 28, 41, 206, 48, 37, 51, 167]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.ProcessUndelegation;
   }
   if (
     containsBytes(
@@ -444,6 +527,17 @@ export function identifyAidtraceInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([222, 81, 4, 76, 215, 182, 217, 16]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.UndelegateTrustScore;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([235, 31, 39, 49, 121, 173, 19, 92]),
       ),
       0,
@@ -477,12 +571,12 @@ export function identifyAidtraceInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([146, 56, 158, 3, 16, 150, 213, 10]),
+        new Uint8Array([223, 161, 56, 106, 139, 16, 181, 175]),
       ),
       0,
     )
   ) {
-    return AidtraceInstruction.UpsertFraudFlag;
+    return AidtraceInstruction.UpsertFraudFlagFromTrustScore;
   }
   if (
     containsBytes(
@@ -510,11 +604,17 @@ export type ParsedAidtraceInstruction<
       instructionType: AidtraceInstruction.CancelAllocation;
     } & ParsedCancelAllocationInstruction<TProgram>)
   | ({
+      instructionType: AidtraceInstruction.CommitTrustScore;
+    } & ParsedCommitTrustScoreInstruction<TProgram>)
+  | ({
       instructionType: AidtraceInstruction.CreateAllocation;
     } & ParsedCreateAllocationInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.CreateCampaign;
     } & ParsedCreateCampaignInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.DelegateTrustScore;
+    } & ParsedDelegateTrustScoreInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.Donate;
     } & ParsedDonateInstruction<TProgram>)
@@ -525,8 +625,14 @@ export type ParsedAidtraceInstruction<
       instructionType: AidtraceInstruction.InitializeTrustScore;
     } & ParsedInitializeTrustScoreInstruction<TProgram>)
   | ({
+      instructionType: AidtraceInstruction.MigrateGlobalConfigV2;
+    } & ParsedMigrateGlobalConfigV2Instruction<TProgram>)
+  | ({
       instructionType: AidtraceInstruction.NominateOrganizationAuthority;
     } & ParsedNominateOrganizationAuthorityInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.ProcessUndelegation;
+    } & ParsedProcessUndelegationInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.RecordDisbursement;
     } & ParsedRecordDisbursementInstruction<TProgram>)
@@ -558,6 +664,9 @@ export type ParsedAidtraceInstruction<
       instructionType: AidtraceInstruction.SubmitCampaign;
     } & ParsedSubmitCampaignInstruction<TProgram>)
   | ({
+      instructionType: AidtraceInstruction.UndelegateTrustScore;
+    } & ParsedUndelegateTrustScoreInstruction<TProgram>)
+  | ({
       instructionType: AidtraceInstruction.UpdateCampaign;
     } & ParsedUpdateCampaignInstruction<TProgram>)
   | ({
@@ -567,8 +676,8 @@ export type ParsedAidtraceInstruction<
       instructionType: AidtraceInstruction.UpdateTrustScore;
     } & ParsedUpdateTrustScoreInstruction<TProgram>)
   | ({
-      instructionType: AidtraceInstruction.UpsertFraudFlag;
-    } & ParsedUpsertFraudFlagInstruction<TProgram>)
+      instructionType: AidtraceInstruction.UpsertFraudFlagFromTrustScore;
+    } & ParsedUpsertFraudFlagFromTrustScoreInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.VerifyDelivery;
     } & ParsedVerifyDeliveryInstruction<TProgram>);
@@ -592,6 +701,13 @@ export function parseAidtraceInstruction<TProgram extends string>(
         ...parseCancelAllocationInstruction(instruction),
       };
     }
+    case AidtraceInstruction.CommitTrustScore: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.CommitTrustScore,
+        ...parseCommitTrustScoreInstruction(instruction),
+      };
+    }
     case AidtraceInstruction.CreateAllocation: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -604,6 +720,13 @@ export function parseAidtraceInstruction<TProgram extends string>(
       return {
         instructionType: AidtraceInstruction.CreateCampaign,
         ...parseCreateCampaignInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.DelegateTrustScore: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.DelegateTrustScore,
+        ...parseDelegateTrustScoreInstruction(instruction),
       };
     }
     case AidtraceInstruction.Donate: {
@@ -627,11 +750,25 @@ export function parseAidtraceInstruction<TProgram extends string>(
         ...parseInitializeTrustScoreInstruction(instruction),
       };
     }
+    case AidtraceInstruction.MigrateGlobalConfigV2: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.MigrateGlobalConfigV2,
+        ...parseMigrateGlobalConfigV2Instruction(instruction),
+      };
+    }
     case AidtraceInstruction.NominateOrganizationAuthority: {
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: AidtraceInstruction.NominateOrganizationAuthority,
         ...parseNominateOrganizationAuthorityInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.ProcessUndelegation: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.ProcessUndelegation,
+        ...parseProcessUndelegationInstruction(instruction),
       };
     }
     case AidtraceInstruction.RecordDisbursement: {
@@ -704,6 +841,13 @@ export function parseAidtraceInstruction<TProgram extends string>(
         ...parseSubmitCampaignInstruction(instruction),
       };
     }
+    case AidtraceInstruction.UndelegateTrustScore: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.UndelegateTrustScore,
+        ...parseUndelegateTrustScoreInstruction(instruction),
+      };
+    }
     case AidtraceInstruction.UpdateCampaign: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -725,11 +869,11 @@ export function parseAidtraceInstruction<TProgram extends string>(
         ...parseUpdateTrustScoreInstruction(instruction),
       };
     }
-    case AidtraceInstruction.UpsertFraudFlag: {
+    case AidtraceInstruction.UpsertFraudFlagFromTrustScore: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: AidtraceInstruction.UpsertFraudFlag,
-        ...parseUpsertFraudFlagInstruction(instruction),
+        instructionType: AidtraceInstruction.UpsertFraudFlagFromTrustScore,
+        ...parseUpsertFraudFlagFromTrustScoreInstruction(instruction),
       };
     }
     case AidtraceInstruction.VerifyDelivery: {

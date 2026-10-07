@@ -15,5 +15,6 @@ export * from "./fraudFlagResolution";
 export * from "./organizationStatus";
 export * from "./organizationStatusEvent";
 export * from "./riskBand";
+export * from "./sessionTokenV2";
 export * from "./verificationStatus";
 export * from "./verificationStatusEvent";

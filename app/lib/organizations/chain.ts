@@ -254,6 +254,33 @@ export async function fetchAdmin(
     throw new Error("Unexpected config discriminator");
   return decoder.decode(raw.slice(8, 40));
 }
+export async function fetchTrustAuthority(
+  cluster: ClusterMoniker
+): Promise<Address | null> {
+  const result = await rpcCall<{
+    value: { owner: string; data: [string, string] } | null;
+  }>(cluster, "getAccountInfo", [
+    await configPda(),
+    { encoding: "base64", commitment: "confirmed" },
+  ]);
+  if (!result.value) return null;
+  if (result.value.owner !== PROGRAM_ID)
+    throw new Error("Unexpected config owner");
+  const raw = Uint8Array.from(atob(result.value.data[0]), (c) =>
+    c.charCodeAt(0)
+  );
+  if (raw.length !== 77 && raw.length !== 109)
+    throw new Error("Unexpected config size");
+  const expected = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", utf8.encode("account:GlobalConfig"))
+  ).slice(0, 8);
+  if (!expected.every((byte, index) => raw[index] === byte))
+    throw new Error("Unexpected config discriminator");
+  // Before the one-time v2 migration, the admin is the default trust authority.
+  return decoder.decode(
+    raw.slice(raw.length === 109 ? 72 : 8, raw.length === 109 ? 104 : 40)
+  );
+}
 export async function sha256Hex(data: Uint8Array) {
   return hex(
     new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(data)))

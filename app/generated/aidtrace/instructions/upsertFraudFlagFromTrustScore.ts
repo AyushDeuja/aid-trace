@@ -34,24 +34,28 @@ import { findConfigPda } from "../pdas";
 import { AIDTRACE_PROGRAM_ADDRESS } from "../programs";
 import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
-export const UPSERT_FRAUD_FLAG_DISCRIMINATOR = new Uint8Array([
-  146, 56, 158, 3, 16, 150, 213, 10,
+export const UPSERT_FRAUD_FLAG_FROM_TRUST_SCORE_DISCRIMINATOR = new Uint8Array([
+  223, 161, 56, 106, 139, 16, 181, 175,
 ]);
 
-export function getUpsertFraudFlagDiscriminatorBytes() {
+export function getUpsertFraudFlagFromTrustScoreDiscriminatorBytes() {
   return fixEncoderSize(getBytesEncoder(), 8).encode(
-    UPSERT_FRAUD_FLAG_DISCRIMINATOR,
+    UPSERT_FRAUD_FLAG_FROM_TRUST_SCORE_DISCRIMINATOR,
   );
 }
 
-export type UpsertFraudFlagInstruction<
+export type UpsertFraudFlagFromTrustScoreInstruction<
   TProgram extends string = typeof AIDTRACE_PROGRAM_ADDRESS,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountTrustScore extends string | AccountMeta<string> = string,
   TAccountFraudFlag extends string | AccountMeta<string> = string,
-  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountFraudFlagEvent extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
+  TAccountSourceProgram extends string | AccountMeta<string> =
+    "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M",
+  TAccountEscrowAuth extends string | AccountMeta<string> = string,
+  TAccountEscrow extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -66,84 +70,111 @@ export type UpsertFraudFlagInstruction<
       TAccountFraudFlag extends string
         ? WritableAccount<TAccountFraudFlag>
         : TAccountFraudFlag,
-      TAccountPayer extends string
-        ? WritableSignerAccount<TAccountPayer> &
-            AccountSignerMeta<TAccountPayer>
-        : TAccountPayer,
+      TAccountFraudFlagEvent extends string
+        ? WritableAccount<TAccountFraudFlagEvent>
+        : TAccountFraudFlagEvent,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountSourceProgram extends string
+        ? ReadonlyAccount<TAccountSourceProgram>
+        : TAccountSourceProgram,
+      TAccountEscrowAuth extends string
+        ? ReadonlyAccount<TAccountEscrowAuth>
+        : TAccountEscrowAuth,
+      TAccountEscrow extends string
+        ? WritableSignerAccount<TAccountEscrow> &
+            AccountSignerMeta<TAccountEscrow>
+        : TAccountEscrow,
       ...TRemainingAccounts,
     ]
   >;
 
-export type UpsertFraudFlagInstructionData = {
+export type UpsertFraudFlagFromTrustScoreInstructionData = {
   discriminator: ReadonlyUint8Array;
 };
 
-export type UpsertFraudFlagInstructionDataArgs = {};
+export type UpsertFraudFlagFromTrustScoreInstructionDataArgs = {};
 
-export function getUpsertFraudFlagInstructionDataEncoder(): FixedSizeEncoder<UpsertFraudFlagInstructionDataArgs> {
+export function getUpsertFraudFlagFromTrustScoreInstructionDataEncoder(): FixedSizeEncoder<UpsertFraudFlagFromTrustScoreInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
-    (value) => ({ ...value, discriminator: UPSERT_FRAUD_FLAG_DISCRIMINATOR }),
+    (value) => ({
+      ...value,
+      discriminator: UPSERT_FRAUD_FLAG_FROM_TRUST_SCORE_DISCRIMINATOR,
+    }),
   );
 }
 
-export function getUpsertFraudFlagInstructionDataDecoder(): FixedSizeDecoder<UpsertFraudFlagInstructionData> {
+export function getUpsertFraudFlagFromTrustScoreInstructionDataDecoder(): FixedSizeDecoder<UpsertFraudFlagFromTrustScoreInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
   ]);
 }
 
-export function getUpsertFraudFlagInstructionDataCodec(): FixedSizeCodec<
-  UpsertFraudFlagInstructionDataArgs,
-  UpsertFraudFlagInstructionData
+export function getUpsertFraudFlagFromTrustScoreInstructionDataCodec(): FixedSizeCodec<
+  UpsertFraudFlagFromTrustScoreInstructionDataArgs,
+  UpsertFraudFlagFromTrustScoreInstructionData
 > {
   return combineCodec(
-    getUpsertFraudFlagInstructionDataEncoder(),
-    getUpsertFraudFlagInstructionDataDecoder(),
+    getUpsertFraudFlagFromTrustScoreInstructionDataEncoder(),
+    getUpsertFraudFlagFromTrustScoreInstructionDataDecoder(),
   );
 }
 
-export type UpsertFraudFlagAsyncInput<
+export type UpsertFraudFlagFromTrustScoreAsyncInput<
   TAccountConfig extends string = string,
   TAccountTrustScore extends string = string,
   TAccountFraudFlag extends string = string,
-  TAccountPayer extends string = string,
+  TAccountFraudFlagEvent extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountSourceProgram extends string = string,
+  TAccountEscrowAuth extends string = string,
+  TAccountEscrow extends string = string,
 > = {
   config?: Address<TAccountConfig>;
   trustScore: Address<TAccountTrustScore>;
   fraudFlag: Address<TAccountFraudFlag>;
-  payer: TransactionSigner<TAccountPayer>;
+  fraudFlagEvent: Address<TAccountFraudFlagEvent>;
   systemProgram?: Address<TAccountSystemProgram>;
+  sourceProgram?: Address<TAccountSourceProgram>;
+  escrowAuth: Address<TAccountEscrowAuth>;
+  escrow: TransactionSigner<TAccountEscrow>;
 };
 
-export async function getUpsertFraudFlagInstructionAsync<
+export async function getUpsertFraudFlagFromTrustScoreInstructionAsync<
   TAccountConfig extends string,
   TAccountTrustScore extends string,
   TAccountFraudFlag extends string,
-  TAccountPayer extends string,
+  TAccountFraudFlagEvent extends string,
   TAccountSystemProgram extends string,
+  TAccountSourceProgram extends string,
+  TAccountEscrowAuth extends string,
+  TAccountEscrow extends string,
   TProgramAddress extends Address = typeof AIDTRACE_PROGRAM_ADDRESS,
 >(
-  input: UpsertFraudFlagAsyncInput<
+  input: UpsertFraudFlagFromTrustScoreAsyncInput<
     TAccountConfig,
     TAccountTrustScore,
     TAccountFraudFlag,
-    TAccountPayer,
-    TAccountSystemProgram
+    TAccountFraudFlagEvent,
+    TAccountSystemProgram,
+    TAccountSourceProgram,
+    TAccountEscrowAuth,
+    TAccountEscrow
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  UpsertFraudFlagInstruction<
+  UpsertFraudFlagFromTrustScoreInstruction<
     TProgramAddress,
     TAccountConfig,
     TAccountTrustScore,
     TAccountFraudFlag,
-    TAccountPayer,
-    TAccountSystemProgram
+    TAccountFraudFlagEvent,
+    TAccountSystemProgram,
+    TAccountSourceProgram,
+    TAccountEscrowAuth,
+    TAccountEscrow
   >
 > {
   // Program address.
@@ -154,8 +185,11 @@ export async function getUpsertFraudFlagInstructionAsync<
     config: { value: input.config ?? null, isWritable: false },
     trustScore: { value: input.trustScore ?? null, isWritable: false },
     fraudFlag: { value: input.fraudFlag ?? null, isWritable: true },
-    payer: { value: input.payer ?? null, isWritable: true },
+    fraudFlagEvent: { value: input.fraudFlagEvent ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    sourceProgram: { value: input.sourceProgram ?? null, isWritable: false },
+    escrowAuth: { value: input.escrowAuth ?? null, isWritable: false },
+    escrow: { value: input.escrow ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -170,6 +204,10 @@ export async function getUpsertFraudFlagInstructionAsync<
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
+  if (!accounts.sourceProgram.value) {
+    accounts.sourceProgram.value =
+      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -177,58 +215,79 @@ export async function getUpsertFraudFlagInstructionAsync<
       getAccountMeta(accounts.config),
       getAccountMeta(accounts.trustScore),
       getAccountMeta(accounts.fraudFlag),
-      getAccountMeta(accounts.payer),
+      getAccountMeta(accounts.fraudFlagEvent),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.sourceProgram),
+      getAccountMeta(accounts.escrowAuth),
+      getAccountMeta(accounts.escrow),
     ],
-    data: getUpsertFraudFlagInstructionDataEncoder().encode({}),
+    data: getUpsertFraudFlagFromTrustScoreInstructionDataEncoder().encode({}),
     programAddress,
-  } as UpsertFraudFlagInstruction<
+  } as UpsertFraudFlagFromTrustScoreInstruction<
     TProgramAddress,
     TAccountConfig,
     TAccountTrustScore,
     TAccountFraudFlag,
-    TAccountPayer,
-    TAccountSystemProgram
+    TAccountFraudFlagEvent,
+    TAccountSystemProgram,
+    TAccountSourceProgram,
+    TAccountEscrowAuth,
+    TAccountEscrow
   >);
 }
 
-export type UpsertFraudFlagInput<
+export type UpsertFraudFlagFromTrustScoreInput<
   TAccountConfig extends string = string,
   TAccountTrustScore extends string = string,
   TAccountFraudFlag extends string = string,
-  TAccountPayer extends string = string,
+  TAccountFraudFlagEvent extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountSourceProgram extends string = string,
+  TAccountEscrowAuth extends string = string,
+  TAccountEscrow extends string = string,
 > = {
   config: Address<TAccountConfig>;
   trustScore: Address<TAccountTrustScore>;
   fraudFlag: Address<TAccountFraudFlag>;
-  payer: TransactionSigner<TAccountPayer>;
+  fraudFlagEvent: Address<TAccountFraudFlagEvent>;
   systemProgram?: Address<TAccountSystemProgram>;
+  sourceProgram?: Address<TAccountSourceProgram>;
+  escrowAuth: Address<TAccountEscrowAuth>;
+  escrow: TransactionSigner<TAccountEscrow>;
 };
 
-export function getUpsertFraudFlagInstruction<
+export function getUpsertFraudFlagFromTrustScoreInstruction<
   TAccountConfig extends string,
   TAccountTrustScore extends string,
   TAccountFraudFlag extends string,
-  TAccountPayer extends string,
+  TAccountFraudFlagEvent extends string,
   TAccountSystemProgram extends string,
+  TAccountSourceProgram extends string,
+  TAccountEscrowAuth extends string,
+  TAccountEscrow extends string,
   TProgramAddress extends Address = typeof AIDTRACE_PROGRAM_ADDRESS,
 >(
-  input: UpsertFraudFlagInput<
+  input: UpsertFraudFlagFromTrustScoreInput<
     TAccountConfig,
     TAccountTrustScore,
     TAccountFraudFlag,
-    TAccountPayer,
-    TAccountSystemProgram
+    TAccountFraudFlagEvent,
+    TAccountSystemProgram,
+    TAccountSourceProgram,
+    TAccountEscrowAuth,
+    TAccountEscrow
   >,
   config?: { programAddress?: TProgramAddress },
-): UpsertFraudFlagInstruction<
+): UpsertFraudFlagFromTrustScoreInstruction<
   TProgramAddress,
   TAccountConfig,
   TAccountTrustScore,
   TAccountFraudFlag,
-  TAccountPayer,
-  TAccountSystemProgram
+  TAccountFraudFlagEvent,
+  TAccountSystemProgram,
+  TAccountSourceProgram,
+  TAccountEscrowAuth,
+  TAccountEscrow
 > {
   // Program address.
   const programAddress = config?.programAddress ?? AIDTRACE_PROGRAM_ADDRESS;
@@ -238,8 +297,11 @@ export function getUpsertFraudFlagInstruction<
     config: { value: input.config ?? null, isWritable: false },
     trustScore: { value: input.trustScore ?? null, isWritable: false },
     fraudFlag: { value: input.fraudFlag ?? null, isWritable: true },
-    payer: { value: input.payer ?? null, isWritable: true },
+    fraudFlagEvent: { value: input.fraudFlagEvent ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    sourceProgram: { value: input.sourceProgram ?? null, isWritable: false },
+    escrowAuth: { value: input.escrowAuth ?? null, isWritable: false },
+    escrow: { value: input.escrow ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -251,6 +313,10 @@ export function getUpsertFraudFlagInstruction<
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
+  if (!accounts.sourceProgram.value) {
+    accounts.sourceProgram.value =
+      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -258,22 +324,28 @@ export function getUpsertFraudFlagInstruction<
       getAccountMeta(accounts.config),
       getAccountMeta(accounts.trustScore),
       getAccountMeta(accounts.fraudFlag),
-      getAccountMeta(accounts.payer),
+      getAccountMeta(accounts.fraudFlagEvent),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.sourceProgram),
+      getAccountMeta(accounts.escrowAuth),
+      getAccountMeta(accounts.escrow),
     ],
-    data: getUpsertFraudFlagInstructionDataEncoder().encode({}),
+    data: getUpsertFraudFlagFromTrustScoreInstructionDataEncoder().encode({}),
     programAddress,
-  } as UpsertFraudFlagInstruction<
+  } as UpsertFraudFlagFromTrustScoreInstruction<
     TProgramAddress,
     TAccountConfig,
     TAccountTrustScore,
     TAccountFraudFlag,
-    TAccountPayer,
-    TAccountSystemProgram
+    TAccountFraudFlagEvent,
+    TAccountSystemProgram,
+    TAccountSourceProgram,
+    TAccountEscrowAuth,
+    TAccountEscrow
   >);
 }
 
-export type ParsedUpsertFraudFlagInstruction<
+export type ParsedUpsertFraudFlagFromTrustScoreInstruction<
   TProgram extends string = typeof AIDTRACE_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -282,21 +354,24 @@ export type ParsedUpsertFraudFlagInstruction<
     config: TAccountMetas[0];
     trustScore: TAccountMetas[1];
     fraudFlag: TAccountMetas[2];
-    payer: TAccountMetas[3];
+    fraudFlagEvent: TAccountMetas[3];
     systemProgram: TAccountMetas[4];
+    sourceProgram: TAccountMetas[5];
+    escrowAuth: TAccountMetas[6];
+    escrow: TAccountMetas[7];
   };
-  data: UpsertFraudFlagInstructionData;
+  data: UpsertFraudFlagFromTrustScoreInstructionData;
 };
 
-export function parseUpsertFraudFlagInstruction<
+export function parseUpsertFraudFlagFromTrustScoreInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedUpsertFraudFlagInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 5) {
+): ParsedUpsertFraudFlagFromTrustScoreInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 8) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
   }
@@ -312,9 +387,14 @@ export function parseUpsertFraudFlagInstruction<
       config: getNextAccount(),
       trustScore: getNextAccount(),
       fraudFlag: getNextAccount(),
-      payer: getNextAccount(),
+      fraudFlagEvent: getNextAccount(),
       systemProgram: getNextAccount(),
+      sourceProgram: getNextAccount(),
+      escrowAuth: getNextAccount(),
+      escrow: getNextAccount(),
     },
-    data: getUpsertFraudFlagInstructionDataDecoder().decode(instruction.data),
+    data: getUpsertFraudFlagFromTrustScoreInstructionDataDecoder().decode(
+      instruction.data,
+    ),
   };
 }
