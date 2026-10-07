@@ -1,8 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
-use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
+use ephemeral_rollups_sdk::anchor::{action, commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
-use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
+use ephemeral_rollups_sdk::ephem::{CallHandler, MagicIntentBundleBuilder};
+use ephemeral_rollups_sdk::{ActionArgs, ShortAccountMeta};
 use session_keys::{SessionTokenV2, SessionV2};
 
 pub mod constants;
@@ -16,6 +17,26 @@ use events::*;
 use state::*;
 
 declare_id!("FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M");
+
+fn validate_magic_fee_vault(
+    trust_record: &AccountInfo,
+    payer_record: &AccountInfo,
+    magic_fee_vault: &AccountInfo,
+) -> Result<()> {
+    require_keys_eq!(*trust_record.owner, ephemeral_rollups_sdk::id(), AidTraceError::InvalidPda);
+    require_keys_eq!(*payer_record.owner, ephemeral_rollups_sdk::id(), AidTraceError::InvalidPda);
+    let trust_data = trust_record.try_borrow_data()?;
+    let payer_data = payer_record.try_borrow_data()?;
+    require!(trust_data.len() >= 40 && payer_data.len() >= 40, AidTraceError::InvalidPda);
+    let trust_validator = Pubkey::new_from_array(trust_data[8..40].try_into().map_err(|_| error!(AidTraceError::InvalidPda))?);
+    let payer_validator = Pubkey::new_from_array(payer_data[8..40].try_into().map_err(|_| error!(AidTraceError::InvalidPda))?);
+    drop(trust_data);
+    drop(payer_data);
+    require_keys_eq!(trust_validator, payer_validator, AidTraceError::InvalidPda);
+    let expected = ephemeral_rollups_sdk::pda::magic_fee_vault_pda_from_validator(&trust_validator);
+    require_keys_eq!(magic_fee_vault.key(), expected, AidTraceError::InvalidPda);
+    Ok(())
+}
 
 #[ephemeral]
 #[program]
@@ -177,21 +198,42 @@ pub mod aidtrace {
     pub fn commit_trust_score(ctx: Context<CommitTrustScore>) -> Result<()> {
         require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
         require!(ctx.accounts.is_valid().map_err(|_| error!(AidTraceError::InvalidTrustSession))?, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.authority, ctx.accounts.config.trust_authority, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.target_program, crate::ID, AidTraceError::InvalidTrustSession);
+        require_keys_eq!(ctx.accounts.session_token.session_signer, ctx.accounts.session_signer.key(), AidTraceError::InvalidTrustSession);
+        validate_magic_fee_vault(&ctx.accounts.trust_score_delegation_record.to_account_info(), &ctx.accounts.automation_payer_delegation_record.to_account_info(), &ctx.accounts.magic_fee_vault.to_account_info())?;
         let campaign = ctx.accounts.trust_score.subject;
         let seeds: &[&[u8]] = &[TRUST_AUTOMATION_PAYER_SEED, campaign.as_ref(), &[ctx.accounts.automation_payer.bump]];
-        MagicIntentBundleBuilder::new(
+        let mut intent = MagicIntentBundleBuilder::new(
             ctx.accounts.automation_payer.to_account_info(),
             ctx.accounts.magic_context.to_account_info(),
             ctx.accounts.magic_program.to_account_info(),
         )
         .magic_fee_vault(ctx.accounts.magic_fee_vault.to_account_info())
-        .commit(&[ctx.accounts.trust_score.to_account_info()])
-        .build_and_invoke_signed(&[seeds])?;
+        .commit(&[ctx.accounts.trust_score.to_account_info()]);
+        if ctx.accounts.trust_score.flagged {
+            intent = intent.add_post_commit_actions([CallHandler {
+                destination_program: crate::ID,
+                accounts: vec![
+                    ShortAccountMeta { pubkey: ctx.accounts.config.key().to_bytes().into(), is_writable: false },
+                    ShortAccountMeta { pubkey: ctx.accounts.trust_score.key().to_bytes().into(), is_writable: false },
+                    ShortAccountMeta { pubkey: ctx.accounts.fraud_flag.key().to_bytes().into(), is_writable: true },
+                    ShortAccountMeta { pubkey: ctx.accounts.fraud_flag_event.key().to_bytes().into(), is_writable: true },
+                    ShortAccountMeta { pubkey: ctx.accounts.system_program.key().to_bytes().into(), is_writable: false },
+                    ShortAccountMeta { pubkey: crate::ID.to_bytes().into(), is_writable: false },
+                ],
+                args: ActionArgs::new(anchor_lang::InstructionData::data(&crate::instruction::UpsertFraudFlagFromTrustScore {})),
+                escrow_authority: ctx.accounts.automation_payer.to_account_info(),
+                compute_units: 200_000,
+            }]);
+        }
+        intent.build_and_invoke_signed(&[seeds])?;
         Ok(())
     }
 
     pub fn undelegate_trust_score(ctx: Context<UndelegateTrustScore>) -> Result<()> {
         require!(ctx.accounts.config.protocol_version >= 2, AidTraceError::TrustConfigurationNotMigrated);
+        validate_magic_fee_vault(&ctx.accounts.trust_score_delegation_record.to_account_info(), &ctx.accounts.automation_payer_delegation_record.to_account_info(), &ctx.accounts.magic_fee_vault.to_account_info())?;
         let campaign = ctx.accounts.trust_score.subject;
         let seeds: &[&[u8]] = &[TRUST_AUTOMATION_PAYER_SEED, campaign.as_ref(), &[ctx.accounts.automation_payer.bump]];
         MagicIntentBundleBuilder::new(
@@ -208,7 +250,7 @@ pub mod aidtrace {
         Ok(())
     }
 
-    pub fn upsert_fraud_flag(ctx: Context<UpsertFraudFlag>) -> Result<()> {
+    pub fn upsert_fraud_flag_from_trust_score(ctx: Context<UpsertFraudFlagFromTrustScore>) -> Result<()> {
         let trust = &ctx.accounts.trust_score;
         require!(trust.score >= ctx.accounts.config.fraud_threshold, AidTraceError::InvalidInput);
         let flag = &mut ctx.accounts.fraud_flag;
@@ -219,6 +261,14 @@ pub mod aidtrace {
         flag.created_at = Clock::get()?.unix_timestamp;
         flag.resolution = FraudFlagResolution::Open;
         flag.bump = ctx.bumps.fraud_flag;
+        let event = &mut ctx.accounts.fraud_flag_event;
+        event.fraud_flag = flag.key();
+        event.subject = trust.subject;
+        event.sequence = trust.canonical_sequence;
+        event.score = trust.score;
+        event.reason_digest = trust.reason_digest;
+        event.occurred_at = Clock::get()?.unix_timestamp;
+        event.bump = ctx.bumps.fraud_flag_event;
         emit!(FraudFlagRaised { fraud_flag: flag.key(), subject: flag.subject, severity: flag.severity, triggering_score: flag.triggering_score, occurred_at: flag.created_at });
         Ok(())
     }
@@ -935,10 +985,23 @@ pub struct CommitTrustScore<'info> {
     #[account(mut, seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump = automation_payer.bump, has_one = campaign @ AidTraceError::InvalidPda)] pub automation_payer: Account<'info, TrustAutomationPayer>,
     /// CHECK: validated by the MagicBlock delegation/fee-vault program during intent execution.
     #[account(mut)] pub magic_fee_vault: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated score; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&trust_score.key()))]
+    pub trust_score_delegation_record: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated fee payer; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&automation_payer.key()))]
+    pub automation_payer_delegation_record: UncheckedAccount<'info>,
     pub session_token: Account<'info, SessionTokenV2>,
     pub session_signer: Signer<'info>,
     /// CHECK: the campaign is only used to bind the automation payer PDA.
     #[account(address = trust_score.subject @ AidTraceError::InvalidPda)] pub campaign: UncheckedAccount<'info>,
+    /// CHECK: created by authenticated post-commit action only.
+    #[account(mut, seeds = [FRAUD_FLAG_SEED, trust_score.subject.as_ref()], bump)] pub fraud_flag: UncheckedAccount<'info>,
+    /// CHECK: event is created by authenticated post-commit action only.
+    #[account(mut, seeds = [FRAUD_FLAG_EVENT_SEED, fraud_flag.key().as_ref(), &trust_score.canonical_sequence.to_le_bytes()], bump)] pub fraud_flag_event: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: required destination account for the Magic Action.
+    #[account(address = crate::ID)] pub aidtrace_program: UncheckedAccount<'info>,
 }
 
 impl<'info> SessionV2<'info> for CommitTrustScore<'info> {
@@ -956,18 +1019,31 @@ pub struct UndelegateTrustScore<'info> {
     #[account(mut, seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump = automation_payer.bump, has_one = campaign @ AidTraceError::InvalidPda)] pub automation_payer: Account<'info, TrustAutomationPayer>,
     /// CHECK: validated by the MagicBlock delegation/fee-vault program during intent execution.
     #[account(mut)] pub magic_fee_vault: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated score; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&trust_score.key()))]
+    pub trust_score_delegation_record: UncheckedAccount<'info>,
+    /// CHECK: canonical record for the delegated payer; validated by PDA and handler.
+    #[account(address = ephemeral_rollups_sdk::pda::delegation_record_pda_from_delegated_account(&automation_payer.key()))]
+    pub automation_payer_delegation_record: UncheckedAccount<'info>,
     /// CHECK: binds the automation payer to the trust subject.
     #[account(address = trust_score.subject @ AidTraceError::InvalidPda)] pub campaign: UncheckedAccount<'info>,
     pub trust_authority: Signer<'info>,
 }
 
+#[action]
 #[derive(Accounts)]
-pub struct UpsertFraudFlag<'info> {
+pub struct UpsertFraudFlagFromTrustScore<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump)] pub config: Account<'info, GlobalConfig>,
     #[account(seeds = [TRUST_SCORE_SEED, trust_score.subject.as_ref()], bump = trust_score.bump)] pub trust_score: Account<'info, TrustScore>,
-    #[account(init_if_needed, payer = payer, space = FraudFlag::SPACE, seeds = [FRAUD_FLAG_SEED, trust_score.subject.as_ref()], bump)] pub fraud_flag: Account<'info, FraudFlag>,
-    #[account(mut)] pub payer: Signer<'info>,
+    #[account(init_if_needed, payer = escrow, space = FraudFlag::SPACE, seeds = [FRAUD_FLAG_SEED, trust_score.subject.as_ref()], bump)] pub fraud_flag: Account<'info, FraudFlag>,
+    #[account(init_if_needed, payer = escrow, space = FraudFlagEvent::SPACE, seeds = [FRAUD_FLAG_EVENT_SEED, fraud_flag.key().as_ref(), &trust_score.canonical_sequence.to_le_bytes()], bump)] pub fraud_flag_event: Account<'info, FraudFlagEvent>,
     pub system_program: Program<'info, System>,
+    /// CHECK: pins the action destination to this program.
+    #[account(address = crate::ID @ AidTraceError::ActionOnly)] pub source_program: UncheckedAccount<'info>,
+    /// CHECK: must be the per-campaign automation payer used by the commit.
+    #[account(seeds = [TRUST_AUTOMATION_PAYER_SEED, trust_score.subject.as_ref()], bump)] pub escrow_auth: UncheckedAccount<'info>,
+    /// CHECK: delegation program action escrow is the only permitted payer/signer.
+    #[account(mut, signer @ AidTraceError::ActionOnly, address = ephemeral_rollups_sdk::pda::ephemeral_balance_pda_from_payer(&escrow_auth.key(), 255) @ AidTraceError::ActionOnly)] pub escrow: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]

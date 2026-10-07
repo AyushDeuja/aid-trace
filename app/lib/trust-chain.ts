@@ -77,7 +77,7 @@ export async function fetchCanonicalFraudFlag(cluster: ClusterMoniker, subject: 
   await assertAccount(raw, "FraudFlag", 84);
   const decodedSubject = decoder.decode(raw.slice(8, 40));
   if (decodedSubject !== subject || (await fraudFlagPda(decodedSubject)) !== key) throw new Error("FraudFlag PDA subject mismatch");
-  const resolution = resolutions[raw[74]];
+  const resolution = resolutions[raw[82]];
   if (!resolution) throw new Error("Invalid FraudFlag resolution");
   return { address: key, subject: decodedSubject, score: raw[41], reasonDigest: hex(raw.slice(42, 74)), resolution };
 }
