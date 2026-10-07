@@ -31,6 +31,8 @@ const DEFAULT_PROGRAM = new PublicKey(
   "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M"
 );
 const SYSTEM_PROGRAM = new PublicKey("11111111111111111111111111111111");
+const PROPAGATION_ATTEMPTS = 12;
+const PROPAGATION_DELAY_MS = 5_000;
 
 export class TrustWriterError extends Error {
   constructor(
@@ -76,6 +78,8 @@ function web3Instruction(ix: any) {
     })),
   });
 }
+const sleep = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 function decodeSessionToken(data: Buffer) {
   if (data.length !== 144)
     throw new TrustWriterError(
@@ -113,6 +117,24 @@ export async function createMagicBlockAdapter(env: NodeJS.ProcessEnv) {
     env.MAGICBLOCK_ROUTER_URL,
     "confirmed"
   );
+
+  async function waitForRouterDelegation(
+    trustScore: PublicKey,
+    automationPayer: PublicKey
+  ) {
+    for (let attempt = 1; attempt <= PROPAGATION_ATTEMPTS; attempt += 1) {
+      const [trust, payer] = await Promise.all([
+        router.getDelegationStatus(trustScore),
+        router.getDelegationStatus(automationPayer),
+      ]);
+      if (trust?.isDelegated && payer?.isDelegated) return;
+      if (attempt < PROPAGATION_ATTEMPTS) await sleep(PROPAGATION_DELAY_MS);
+    }
+    throw new TrustWriterError(
+      "delegation_propagation_timeout",
+      "Router did not observe both delegated trust accounts"
+    );
+  }
 
   async function resolve(job: any) {
     const program = new PublicKey(job.program_id || DEFAULT_PROGRAM);
@@ -183,6 +205,9 @@ export async function createMagicBlockAdapter(env: NodeJS.ProcessEnv) {
         true
       );
 
+    // Router status is the propagation gate; the base delegation records are
+    // then the source of truth for the validator and fee-vault derivation.
+    await waitForRouterDelegation(trustScore, automationPayer);
     const trustRecord = await getDelegationRecord(
       base,
       trustScore,
@@ -203,19 +228,18 @@ export async function createMagicBlockAdapter(env: NodeJS.ProcessEnv) {
         "router_mismatch",
         "Delegated accounts resolve to different validators"
       );
-    let endpoint = env.MAGICBLOCK_ER_RPC_URL;
-    if (!endpoint) {
-      const closest = await router.getClosestValidator();
-      if (
-        closest.identity !== trustRecord.validator.toBase58() ||
-        !closest.fqdn
-      )
-        throw new TrustWriterError(
-          "router_mismatch",
-          "Router did not return the delegated validator"
-        );
-      endpoint = closest.fqdn;
-    }
+    // Version 0.15 of the public router client reports only the boolean
+    // delegation state.  The router-selected endpoint is therefore obtained
+    // from its current validator response and is accepted only when its
+    // identity is the validator in both base delegation records.  An env ER
+    // URL is deliberately not a routing override.
+    const closest = await router.getClosestValidator();
+    if (closest.identity !== trustRecord.validator.toBase58() || !closest.fqdn)
+      throw new TrustWriterError(
+        "router_mismatch",
+        "Router endpoint does not match the delegated validator"
+      );
+    const endpoint = closest.fqdn;
     const er = new Connection(endpoint, "confirmed");
     if (
       (await (er as any).getIdentity()).identity !==

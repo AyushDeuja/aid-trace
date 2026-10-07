@@ -261,14 +261,25 @@ pub mod aidtrace {
         flag.created_at = Clock::get()?.unix_timestamp;
         flag.resolution = FraudFlagResolution::Open;
         flag.bump = ctx.bumps.fraud_flag;
+        // A post-commit action may be retried after the TrustScore is already
+        // canonical.  The flag itself intentionally reopens, but the audit
+        // record for a canonical sequence is immutable: a retry must prove it
+        // is the same event rather than rewriting history.
         let event = &mut ctx.accounts.fraud_flag_event;
-        event.fraud_flag = flag.key();
-        event.subject = trust.subject;
-        event.sequence = trust.canonical_sequence;
-        event.score = trust.score;
-        event.reason_digest = trust.reason_digest;
-        event.occurred_at = Clock::get()?.unix_timestamp;
-        event.bump = ctx.bumps.fraud_flag_event;
+        if event.sequence == 0 {
+            event.fraud_flag = flag.key();
+            event.subject = trust.subject;
+            event.sequence = trust.canonical_sequence;
+            event.score = trust.score;
+            event.reason_digest = trust.reason_digest;
+            event.occurred_at = Clock::get()?.unix_timestamp;
+            event.bump = ctx.bumps.fraud_flag_event;
+        } else {
+            require!(event.fraud_flag == flag.key(), AidTraceError::InvalidPda);
+            require!(event.subject == trust.subject, AidTraceError::InvalidPda);
+            require!(event.sequence == trust.canonical_sequence, AidTraceError::InvalidSequence);
+            require!(event.score == trust.score && event.reason_digest == trust.reason_digest, AidTraceError::InvalidInput);
+        }
         emit!(FraudFlagRaised { fraud_flag: flag.key(), subject: flag.subject, severity: flag.severity, triggering_score: flag.triggering_score, occurred_at: flag.created_at });
         Ok(())
     }
