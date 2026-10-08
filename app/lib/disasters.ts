@@ -9,6 +9,8 @@ const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const clean = (value: unknown, max: number) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 type Normalized = {
   provider: "gdacs" | "usgs";
   externalId: string;
@@ -35,48 +37,55 @@ async function fetchJson(url: string) {
     }
   throw failure;
 }
-function usgs(payload: any): Normalized[] {
-  return Array.isArray(payload?.features)
-    ? payload.features
-        .filter((f: any) => Number(f?.properties?.mag) >= 5)
-        .map((f: any) => ({
+function usgs(payload: unknown): Normalized[] {
+  const features = record(payload).features;
+  return Array.isArray(features)
+    ? features
+        .filter((item) => Number(record(record(item).properties).mag) >= 5)
+        .map((item) => {
+          const feature = record(item), properties = record(feature.properties);
+          return {
           provider: "usgs",
-          externalId: String(f.id),
-          sourceUrl: String(f.properties.url || USGS),
-          occurredAt: f.properties.time
-            ? new Date(f.properties.time).toISOString()
+          externalId: String(feature.id || ""),
+          sourceUrl: String(properties.url || USGS),
+          occurredAt: properties.time
+            ? new Date(String(properties.time)).toISOString()
             : null,
           disasterType: "Earthquake",
-          title: clean(f.properties.title, 240) || "USGS earthquake",
-          location: clean(f.properties.place, 240) || "Location unavailable",
-          payload: f,
-        }))
+          title: clean(properties.title, 240) || "USGS earthquake",
+          location: clean(properties.place, 240) || "Location unavailable",
+          payload: item,
+        };
+        })
     : [];
 }
-function gdacs(payload: any): Normalized[] {
-  const rows = payload?.features || payload?.events || [];
+function gdacs(payload: unknown): Normalized[] {
+  const root = record(payload);
+  const rows = root.features || root.events || [];
   return Array.isArray(rows)
     ? rows
-        .filter((f: any) =>
-          ["orange", "red"].includes(
+        .filter((item) => {
+          const source = record(item), properties = record(source.properties);
+          return ["orange", "red"].includes(
             String(
-              f?.properties?.alertlevel || f?.alertlevel || ""
+              properties.alertlevel || source.alertlevel || ""
             ).toLowerCase()
-          )
-        )
-        .map((f: any) => {
-          const p = f.properties || f;
+          );
+        })
+        .map((item) => {
+          const source = record(item);
+          const p = Object.keys(record(source.properties)).length ? record(source.properties) : source;
           const id = String(p.eventid || p.id || "");
           return {
-        provider: "gdacs" as const,
+            provider: "gdacs" as const,
             externalId: id,
             sourceUrl: String(p.url || GDACS),
-            occurredAt: p.fromdate || p.eventdate || null,
+            occurredAt: clean(p.fromdate || p.eventdate, 80) || null,
             disasterType: clean(p.eventtype || p.type, 80) || "Disaster",
             title: clean(p.name || p.title, 240) || "GDACS alert",
             location:
               clean(p.country || p.location, 240) || "Location unavailable",
-            payload: f,
+            payload: item,
           };
         })
         .filter((f: Normalized) => Boolean(f.externalId))
@@ -84,11 +93,11 @@ function gdacs(payload: any): Normalized[] {
 }
 export async function ingestDisasters() {
   const db = database();
-  const sources: ["gdacs" | "usgs", string, (p: any) => Normalized[]][] = [
+  const sources: ["gdacs" | "usgs", string, (p: unknown) => Normalized[]][] = [
     ["gdacs", GDACS, gdacs],
     ["usgs", USGS, usgs],
   ];
-  const result: any[] = [];
+  const result: Array<{ provider: string; items?: number; error?: string }> = [];
   for (const [provider, url, parser] of sources) {
     const run = randomUUID();
     await db.query(

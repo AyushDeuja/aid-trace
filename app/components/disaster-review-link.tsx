@@ -14,8 +14,8 @@ export function DisasterReviewLink() {
   useEffect(() => {
     let current = true;
     if (!walletAddress || (cluster !== "devnet" && cluster !== "localnet")) {
-      setIsAdmin(false);
-      return () => { current = false; };
+      const timer = window.setTimeout(() => { if (current) setIsAdmin(false); }, 0);
+      return () => { current = false; window.clearTimeout(timer); };
     }
     void fetchAdmin(cluster).then((admin) => {
       if (current) setIsAdmin(admin === walletAddress);

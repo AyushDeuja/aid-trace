@@ -116,7 +116,7 @@ export async function requireOrganizationAuthority(payload: {
     throw new Error("Invalid or expired authorization challenge");
   const organization = await fetchOrganization(
     payload.cluster,
-    payload.organization as any
+    payload.organization as Address
   );
   if (!organization || organization.authority !== payload.wallet)
     throw new Error("Connected wallet is not the organization authority");

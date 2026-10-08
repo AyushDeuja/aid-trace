@@ -13,12 +13,14 @@ export async function POST(
     const body = await request.json();
     const link = (
       await database().query(
-        "SELECT * FROM disaster_campaign_links WHERE candidate_id=$1",
+        "SELECT l.*,c.status FROM disaster_campaign_links l JOIN disaster_candidates c ON c.id=l.candidate_id WHERE l.candidate_id=$1",
         [id]
       )
     ).rows[0];
     if (!link || link.organization_address !== body.organization)
       throw new Error("Candidate is not assigned to this organization");
+    if (link.status !== "approved")
+      throw new Error("Only an admin-approved request can be prepared as a campaign draft");
     await requireOrganizationAuthority({
       ...body,
       action: "prepare_draft",

@@ -4,6 +4,10 @@ import { useCluster } from "../../components/cluster-context";
 import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
 import { fetchAdmin } from "../../lib/organizations/chain";
+import { fetchOrganization, rpcCall } from "../../lib/organizations/chain";
+import { campaignPda, createAdminDisasterCampaignIx } from "../../lib/campaigns/chain";
+import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
+import { address } from "@solana/kit";
 
 type Candidate = {
   id: string;
@@ -14,14 +18,21 @@ type Candidate = {
   provider: string;
   occurred_at: string | null;
   observations: { source_url: string; provider: string }[];
+  organization_address?: string;
+  proposal?: { goalLamports: string; endsAt: string | null };
+  metadata_uri?: string;
+  metadata_digest?: string;
+  campaign_address?: string;
 };
 const b64 = (data: Uint8Array) => btoa(String.fromCharCode(...data));
 export default function DisasterReview() {
   const { cluster } = useCluster();
   const { wallet } = useWallet();
+  const { send, isSending } = useSendTransaction();
   const [items, setItems] = useState<Candidate[]>([]);
   const [error, setError] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [stage, setStage] = useState("");
   const signedPayload = async (action: string, candidateId?: string) => {
     if (!wallet?.signMessage) throw new Error("Connected wallet must support message signing");
     const challengeResponse = await fetch("/api/disasters/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: wallet.account.address, action, ...(candidateId ? { candidateId } : {}) }) });
@@ -45,7 +56,10 @@ export default function DisasterReview() {
   }, [wallet, cluster]);
   useEffect(() => {
     let current = true;
-    if (!wallet?.account.address) { setIsAdmin(false); return; }
+    if (!wallet?.account.address) {
+      const timer = window.setTimeout(() => { if (current) setIsAdmin(false); }, 0);
+      return () => { current = false; window.clearTimeout(timer); };
+    }
     void fetchAdmin(cluster).then((admin) => { if (current) setIsAdmin(admin === wallet.account.address); }).catch(() => { if (current) setIsAdmin(false); });
     return () => { current = false; };
   }, [wallet?.account.address, cluster]);
@@ -54,24 +68,41 @@ export default function DisasterReview() {
       setError("Connected wallet must support message signing");
       return;
     }
-    const authorization = await signedPayload(action, c.id);
-    const note =
-      action === "reject" ? prompt("Rejection note") || "" : undefined;
-    const response = await fetch(`/api/disasters/${c.id}/review`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action,
-        ...authorization,
-        note,
-      }),
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      setError(body.error || "Review failed");
-      return;
+    try {
+      const authorization = await signedPayload(action, c.id);
+      const note = action === "reject" ? prompt("Rejection note") || "" : undefined;
+      const response = await fetch(`/api/disasters/${c.id}/review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, ...authorization, note }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Review failed");
+      if (action === "approve") await createActiveCampaign(c, body);
+      await load();
+    } catch (cause) { setStage("Failed"); setError(cause instanceof Error ? cause.message : "Review failed"); }
+  };
+  const createActiveCampaign = async (candidate: Candidate, approval: { organization: string; goalLamports: string; uri: string; digest: string; endsAt: string | null }) => {
+    if (!wallet?.account.address) throw new Error("Connect the administrator wallet");
+    const organization = await fetchOrganization(cluster, address(approval.organization));
+    if (!organization) throw new Error("Organization is unavailable on the selected cluster");
+    setStage("Awaiting wallet approval to create the active disaster campaign");
+    const ix = await createAdminDisasterCampaignIx(organization.address, address(wallet.account.address), organization.nextCampaignId, BigInt(approval.goalLamports), approval.endsAt ? BigInt(Math.floor(new Date(approval.endsAt).getTime() / 1000)) : null, approval.digest, approval.uri);
+    const signature = await send({ instructions: [ix] });
+    setStage("Confirming active campaign");
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const result = await rpcCall<{ value: Array<{ err: unknown; confirmationStatus: string } | null> }>(cluster, "getSignatureStatuses", [[signature], { searchTransactionHistory: true }]);
+      if (result.value[0]?.err) throw new Error("Campaign transaction failed on Solana");
+      if (["confirmed", "finalized"].includes(result.value[0]?.confirmationStatus || "")) break;
+      if (attempt === 29) throw new Error("Campaign transaction confirmation timed out");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    await load();
+    const campaignAddress = await campaignPda(organization.address, organization.nextCampaignId);
+    const record = await signedPayload("record_active_campaign", candidate.id);
+    const recorded = await fetch(`/api/disasters/${candidate.id}/chain`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...record, phase: "active_created", signature, campaignAddress }) });
+    const recordedBody = await recorded.json();
+    if (!recorded.ok) throw new Error(recordedBody.error || "Campaign was created but could not be linked to the request");
+    setStage(`Active campaign created: ${campaignAddress}`);
   };
   return (
     <main className="mx-auto max-w-5xl space-y-5 px-5 py-10">
@@ -79,8 +110,8 @@ export default function DisasterReview() {
         <div>
           <h1 className="text-3xl font-semibold">Disaster candidates</h1>
           <p className="text-sm text-muted">
-            Private, provenance-first human review. No candidate creates a
-            campaign automatically.
+            Approving a verified organization request prepares canonical
+            metadata and asks the admin wallet to create an active campaign.
           </p>
         </div>
         <WalletButton />
@@ -91,6 +122,7 @@ export default function DisasterReview() {
           {error}
         </p>
       )}
+      {stage && <p role="status">{stage}</p>}
       <button disabled={!isAdmin} className="rounded border px-3 py-2 disabled:opacity-50" onClick={() => void load()}>
         Refresh
       </button>
@@ -117,7 +149,8 @@ export default function DisasterReview() {
           {c.status === "requested" && isAdmin && (
             <div className="flex gap-2">
               <button
-                className="rounded border px-3 py-2"
+                className="rounded border px-3 py-2 disabled:opacity-50"
+                disabled={isSending}
                 onClick={() => void decide(c, "approve")}
               >
                 Approve organization request
@@ -129,6 +162,15 @@ export default function DisasterReview() {
                 Reject
               </button>
             </div>
+          )}
+          {c.status === "approved" && isAdmin && c.organization_address && c.proposal && c.metadata_uri && c.metadata_digest && (
+            <button
+              className="rounded border px-3 py-2 disabled:opacity-50"
+              disabled={isSending}
+              onClick={() => void createActiveCampaign(c, { organization: c.organization_address!, goalLamports: c.proposal!.goalLamports, uri: c.metadata_uri!, digest: c.metadata_digest!, endsAt: c.proposal!.endsAt })}
+            >
+              Create active campaign
+            </button>
           )}
         </article>
       ))}
