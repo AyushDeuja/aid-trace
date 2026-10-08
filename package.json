@@ -9,6 +9,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "backup:metadata": "node scripts/backup-metadata.mjs",
     "index:chain": "node scripts/index-chain.mjs",
+    "disaster:ingest": "node --import tsx scripts/ingest-disasters.mjs",
     "fraud:score": "cd services/fraud && python -m fraud_service.cli",
     "fraud:dev": "node scripts/fraud-dev.mjs",
     "trust:worker": "node --import tsx services/trust-writer/worker.mjs",
