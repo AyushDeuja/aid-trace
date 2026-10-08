@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useCluster } from "../../components/cluster-context";
 import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
+import { fetchAdmin } from "../../lib/organizations/chain";
 
 type Candidate = {
   id: string;
@@ -20,52 +21,40 @@ export default function DisasterReview() {
   const { wallet } = useWallet();
   const [items, setItems] = useState<Candidate[]>([]);
   const [error, setError] = useState("");
-  const load = useCallback(
-    () =>
-      fetch("/api/disasters")
-        .then(async (r) => {
-          if (!r.ok) throw new Error("Could not load candidates");
-          setItems(await r.json());
-        })
-        .catch((e) => setError(e.message)),
-    []
-  );
+  const [isAdmin, setIsAdmin] = useState(false);
+  const signedPayload = async (action: string, candidateId?: string) => {
+    if (!wallet?.signMessage) throw new Error("Connected wallet must support message signing");
+    const challengeResponse = await fetch("/api/disasters/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: wallet.account.address, action, ...(candidateId ? { candidateId } : {}) }) });
+    const challenge = await challengeResponse.json();
+    if (!challengeResponse.ok) throw new Error(challenge.error || "Could not create authorization challenge");
+    const signed = await wallet.signMessage(new TextEncoder().encode(challenge.message));
+    if (new TextDecoder().decode(signed.message) !== challenge.message)
+      throw new Error("Wallet returned a different signed message");
+    return { wallet: wallet.account.address, nonce: challenge.nonce, message: challenge.message, signature: b64(signed.signature), cluster, ...(candidateId ? { candidateId } : {}) };
+  };
+  const load = useCallback(async () => {
+    try {
+      const payload = await signedPayload("list_admin");
+      const response = await fetch("/api/disasters/list", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, role: "admin" }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not load candidates");
+      setItems(body);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not load candidates"); }
+  // signedPayload intentionally follows the active wallet and cluster.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet, cluster]);
   useEffect(() => {
-    void load();
-  }, [load]);
+    let current = true;
+    if (!wallet?.account.address) { setIsAdmin(false); return; }
+    void fetchAdmin(cluster).then((admin) => { if (current) setIsAdmin(admin === wallet.account.address); }).catch(() => { if (current) setIsAdmin(false); });
+    return () => { current = false; };
+  }, [wallet?.account.address, cluster]);
   const decide = async (c: Candidate, action: "approve" | "reject") => {
     if (!wallet?.signMessage) {
       setError("Connected wallet must support message signing");
       return;
     }
-    const challenge = await fetch("/api/disasters/challenge", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        wallet: wallet.account.address,
-        action,
-        candidateId: c.id,
-      }),
-    }).then((r) => r.json());
-    if (challenge.error) {
-      setError(challenge.error);
-      return;
-    }
-    const signed = await wallet.signMessage(
-      new TextEncoder().encode(challenge.message)
-    );
-    const proposal =
-      action === "approve"
-        ? {
-            organization: prompt("Organization address") || "",
-            title: c.title,
-            description: `Human-reviewed relief campaign for ${c.title}.`,
-            disasterType: c.disaster_type,
-            location: c.location,
-            goalLamports: prompt("Goal in lamports") || "",
-            endsAt: null,
-          }
-        : undefined;
+    const authorization = await signedPayload(action, c.id);
     const note =
       action === "reject" ? prompt("Rejection note") || "" : undefined;
     const response = await fetch(`/api/disasters/${c.id}/review`, {
@@ -73,13 +62,7 @@ export default function DisasterReview() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         action,
-        wallet: wallet.account.address,
-        nonce: challenge.nonce,
-        message: new TextDecoder().decode(signed.message),
-        signature: b64(signed.signature),
-        cluster,
-        candidateId: c.id,
-        proposal,
+        ...authorization,
         note,
       }),
     });
@@ -102,12 +85,13 @@ export default function DisasterReview() {
         </div>
         <WalletButton />
       </header>
+      {!isAdmin && <p role="alert" className="rounded border p-3">Connect the GlobalConfig admin wallet to view disaster requests.</p>}
       {error && (
         <p role="alert" className="rounded border p-3">
           {error}
         </p>
       )}
-      <button className="rounded border px-3 py-2" onClick={() => void load()}>
+      <button disabled={!isAdmin} className="rounded border px-3 py-2 disabled:opacity-50" onClick={() => void load()}>
         Refresh
       </button>
       {items.map((c) => (
@@ -130,13 +114,13 @@ export default function DisasterReview() {
               Source: {o.provider}
             </a>
           ))}
-          {c.status === "detected" && (
+          {c.status === "requested" && isAdmin && (
             <div className="flex gap-2">
               <button
                 className="rounded border px-3 py-2"
                 onClick={() => void decide(c, "approve")}
               >
-                Approve proposal
+                Approve organization request
               </button>
               <button
                 className="rounded border px-3 py-2"

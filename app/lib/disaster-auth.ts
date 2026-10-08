@@ -1,10 +1,33 @@
 import { createPublicKey, verify } from "node:crypto";
-import { getAddressDecoder } from "@solana/kit";
+import { getAddressEncoder, type Address } from "@solana/kit";
 import { database } from "./organizations/db";
 import { fetchAdmin, fetchOrganization } from "./organizations/chain";
 import type { ClusterMoniker } from "./solana-client";
 
 const prefix = Buffer.from("302a300506032b6570032100", "hex");
+const addressEncoder = getAddressEncoder();
+
+function challengeMessage(row: {
+  action: string;
+  candidate_id: string | null;
+  nonce: string;
+  expires_at: Date | string;
+}) {
+  return `AidTrace Task 9\nAction: ${row.action}\nCandidate: ${row.candidate_id || "none"}\nNonce: ${row.nonce}\nExpires: ${new Date(row.expires_at).toISOString()}`;
+}
+
+function verificationKey(wallet: string) {
+  return createPublicKey({
+    key: Buffer.concat([
+      prefix,
+      // Address decoding goes from bytes to base58. Wallet verification needs
+      // the reverse conversion, so encode the base58 wallet address instead.
+      Buffer.from(addressEncoder.encode(wallet as Address)),
+    ]),
+    format: "der",
+    type: "spki",
+  });
+}
 export async function issueChallenge(
   wallet: string,
   action: string,
@@ -18,7 +41,7 @@ export async function issueChallenge(
   );
   return {
     nonce,
-    message: `AidTrace Task 9\nAction: ${action}\nCandidate: ${candidateId || "none"}\nNonce: ${nonce}\nExpires: ${expiry.toISOString()}`,
+    message: challengeMessage({ action, candidate_id: candidateId || null, nonce, expires_at: expiry }),
   };
 }
 export async function requireAdmin(payload: {
@@ -48,14 +71,9 @@ export async function requireAdmin(payload: {
   const expected = await fetchAdmin(payload.cluster);
   if (expected !== payload.wallet)
     throw new Error("Connected wallet is not the GlobalConfig admin");
-  const key = createPublicKey({
-    key: Buffer.concat([
-      prefix,
-      Buffer.from(getAddressDecoder().decode(payload.wallet as any)),
-    ]),
-    format: "der",
-    type: "spki",
-  });
+  if (payload.message !== challengeMessage(row))
+    throw new Error("Challenge message does not match the issued authorization");
+  const key = verificationKey(payload.wallet);
   if (
     !verify(
       null,
@@ -65,10 +83,11 @@ export async function requireAdmin(payload: {
     )
   )
     throw new Error("Invalid wallet signature");
-  await database().query(
-    "UPDATE disaster_auth_challenges SET used_at=now() WHERE nonce=$1",
+  const consumed = await database().query(
+    "UPDATE disaster_auth_challenges SET used_at=now() WHERE nonce=$1 AND used_at IS NULL RETURNING nonce",
     [payload.nonce]
   );
+  if (!consumed.rows[0]) throw new Error("Authorization challenge was already used");
 }
 export async function requireOrganizationAuthority(payload: {
   nonce: string;
@@ -76,7 +95,7 @@ export async function requireOrganizationAuthority(payload: {
   signature: string;
   wallet: string;
   action: string;
-  candidateId: string;
+  candidateId?: string;
   cluster: ClusterMoniker;
   organization: string;
 }) {
@@ -92,7 +111,7 @@ export async function requireOrganizationAuthority(payload: {
     row.expires_at < new Date() ||
     row.wallet_address !== payload.wallet ||
     row.action !== payload.action ||
-    row.candidate_id !== payload.candidateId
+    row.candidate_id !== (payload.candidateId || null)
   )
     throw new Error("Invalid or expired authorization challenge");
   const organization = await fetchOrganization(
@@ -101,14 +120,9 @@ export async function requireOrganizationAuthority(payload: {
   );
   if (!organization || organization.authority !== payload.wallet)
     throw new Error("Connected wallet is not the organization authority");
-  const key = createPublicKey({
-    key: Buffer.concat([
-      prefix,
-      Buffer.from(getAddressDecoder().decode(payload.wallet as any)),
-    ]),
-    format: "der",
-    type: "spki",
-  });
+  if (payload.message !== challengeMessage(row))
+    throw new Error("Challenge message does not match the issued authorization");
+  const key = verificationKey(payload.wallet);
   if (
     !verify(
       null,
@@ -118,8 +132,9 @@ export async function requireOrganizationAuthority(payload: {
     )
   )
     throw new Error("Invalid wallet signature");
-  await database().query(
-    "UPDATE disaster_auth_challenges SET used_at=now() WHERE nonce=$1",
+  const consumed = await database().query(
+    "UPDATE disaster_auth_challenges SET used_at=now() WHERE nonce=$1 AND used_at IS NULL RETURNING nonce",
     [payload.nonce]
   );
+  if (!consumed.rows[0]) throw new Error("Authorization challenge was already used");
 }

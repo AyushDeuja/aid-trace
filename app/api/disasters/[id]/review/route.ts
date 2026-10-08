@@ -19,7 +19,7 @@ export async function POST(
       if (typeof b.note !== "string" || !b.note.trim() || b.note.length > 1000)
         throw new Error("A rejection note is required");
       await db.query(
-        "UPDATE disaster_candidates SET status='rejected',updated_at=now() WHERE id=$1 AND status='detected'",
+        "UPDATE disaster_candidates SET status='rejected',updated_at=now() WHERE id=$1 AND status='requested'",
         [id]
       );
       await db.query(
@@ -28,30 +28,14 @@ export async function POST(
       );
       return NextResponse.json({ status: "rejected" });
     }
-    const proposal = b.proposal;
-    const metadata = validateCampaignMetadata(proposal);
-    if (
-      typeof proposal?.organization !== "string" ||
-      typeof proposal?.goalLamports !== "string" ||
-      !/^\d+$/.test(proposal.goalLamports)
-    )
-      throw new Error("Invalid campaign proposal");
-    await db.query(
-      "UPDATE disaster_candidates SET status='approved',updated_at=now() WHERE id=$1 AND status='detected'",
+    const link = (await db.query("SELECT proposal,organization_address FROM disaster_campaign_links WHERE candidate_id=$1", [id])).rows[0];
+    if (!link) throw new Error("No organization campaign request exists for this candidate");
+    validateCampaignMetadata(link.proposal);
+    const approved = await db.query(
+      "UPDATE disaster_candidates SET status='approved',updated_at=now() WHERE id=$1 AND status='requested' RETURNING id",
       [id]
     );
-    await db.query(
-      "INSERT INTO disaster_campaign_links(candidate_id,organization_address,proposal) VALUES($1,$2,$3) ON CONFLICT(candidate_id) DO UPDATE SET organization_address=EXCLUDED.organization_address,proposal=EXCLUDED.proposal,updated_at=now()",
-      [
-        id,
-        proposal.organization,
-        {
-          ...metadata,
-          goalLamports: proposal.goalLamports,
-          endsAt: proposal.endsAt || null,
-        },
-      ]
-    );
+    if (!approved.rows[0]) throw new Error("Only a pending organization request can be approved");
     await db.query(
       "INSERT INTO disaster_candidate_history(id,candidate_id,action,actor,proposal) VALUES($1,$2,$3,$4,$5)",
       [
@@ -59,12 +43,7 @@ export async function POST(
         id,
         "approved",
         b.wallet,
-        {
-          ...metadata,
-          organization: proposal.organization,
-          goalLamports: proposal.goalLamports,
-          endsAt: proposal.endsAt || null,
-        },
+        { ...link.proposal, organization: link.organization_address },
       ]
     );
     return NextResponse.json({ status: "approved" });
