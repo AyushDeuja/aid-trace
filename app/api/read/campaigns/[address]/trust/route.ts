@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { address as solanaAddress } from "@solana/kit";
 import { fetchFraud } from "../../../../../lib/fraud-service";
 import { isFraudCluster } from "../../../../../lib/fraud-types";
-import { fetchCanonicalFraudFlag, fetchCanonicalTrustScore } from "../../../../../lib/trust-chain";
+import {
+  fetchCanonicalFraudFlag,
+  fetchCanonicalTrustScore,
+} from "../../../../../lib/trust-chain";
 
 export const runtime = "nodejs";
 export async function GET(
@@ -23,8 +26,22 @@ export async function GET(
     fetchFraud(`/v1/subjects/${address}?cluster=${cluster}`),
     fetchFraud(`/v1/subjects/${address}/trust?cluster=${cluster}`),
     Promise.all([
-      fetchCanonicalTrustScore(cluster, solanaAddress(address)).catch((error) => ({ error: error instanceof Error ? error.message : "canonical trust read failed" })),
-      fetchCanonicalFraudFlag(cluster, solanaAddress(address)).catch((error) => ({ error: error instanceof Error ? error.message : "canonical fraud flag read failed" })),
+      fetchCanonicalTrustScore(cluster, solanaAddress(address)).catch(
+        (error) => ({
+          error:
+            error instanceof Error
+              ? error.message
+              : "canonical trust read failed",
+        })
+      ),
+      fetchCanonicalFraudFlag(cluster, solanaAddress(address)).catch(
+        (error) => ({
+          error:
+            error instanceof Error
+              ? error.message
+              : "canonical fraud flag read failed",
+        })
+      ),
     ]),
   ]);
   if (!evaluation.ok && evaluation.status !== 404)
@@ -37,18 +54,21 @@ export async function GET(
     ? "unavailable"
     : trustScore && !("error" in trustScore)
       ? "canonical"
-    : !evaluation.ok
-    ? "not_initialized"
-    : write.body &&
-          typeof write.body === "object" &&
-          "status" in write.body &&
-          ((write.body as { status: unknown }).status === "failed" || (write.body as { status: unknown }).status === "action_pending")
-        ? "stale"
-        : "realtime_pending";
+      : !evaluation.ok
+        ? "not_initialized"
+        : write.body &&
+            typeof write.body === "object" &&
+            "status" in write.body &&
+            ((write.body as { status: unknown }).status === "failed" ||
+              (write.body as { status: unknown }).status === "action_pending")
+          ? "stale"
+          : "realtime_pending";
   return NextResponse.json({
     state,
     evaluation: evaluation.ok ? evaluation.body : null,
     write: write.ok ? write.body : null,
-    canonical: canonicalUnavailable ? null : { trust_score: trustScore, fraud_flag: fraudFlag },
+    canonical: canonicalUnavailable
+      ? null
+      : { trust_score: trustScore, fraud_flag: fraudFlag },
   });
 }

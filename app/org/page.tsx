@@ -210,11 +210,22 @@ export default function OrganizationPage() {
               onChange={(e) => setName(e.target.value)}
             />
           </label>
-          <label className="block text-sm">Description
-            <textarea className="mt-1 w-full rounded border p-2" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <label className="block text-sm">
+            Description
+            <textarea
+              className="mt-1 w-full rounded border p-2"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </label>
-          <label className="block text-sm">Website (optional)
-            <input className="mt-1 w-full rounded border p-2" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://example.org" />
+          <label className="block text-sm">
+            Website (optional)
+            <input
+              className="mt-1 w-full rounded border p-2"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://example.org"
+            />
           </label>
           <button
             className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
@@ -224,7 +235,10 @@ export default function OrganizationPage() {
               void transact(
                 async () => {
                   metadata = await prepareMetadata();
-                  return registerOrganizationIx(address(walletAddress), metadata.digest);
+                  return registerOrganizationIx(
+                    address(walletAddress),
+                    metadata.digest
+                  );
                 },
                 async () =>
                   saveUri(
@@ -295,11 +309,21 @@ export default function OrganizationPage() {
                   onChange={(e) => setName(e.target.value)}
                 />
               </label>
-              <label className="block text-sm">Description
-                <textarea className="mt-1 w-full rounded border p-2" value={description} onChange={(e) => setDescription(e.target.value)} />
+              <label className="block text-sm">
+                Description
+                <textarea
+                  className="mt-1 w-full rounded border p-2"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
               </label>
-              <label className="block text-sm">Website (optional)
-                <input className="mt-1 w-full rounded border p-2" value={website} onChange={(e) => setWebsite(e.target.value)} />
+              <label className="block text-sm">
+                Website (optional)
+                <input
+                  className="mt-1 w-full rounded border p-2"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
               </label>
               <button
                 className="rounded border px-3 py-2 disabled:opacity-50"

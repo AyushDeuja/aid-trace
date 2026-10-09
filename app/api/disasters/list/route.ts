@@ -18,10 +18,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     if (body?.role === "admin") {
       await requireAdmin({ ...body, action: "list_admin" });
-      const rows = await database().query(candidateQuery, [body.status || null]);
+      const rows = await database().query(candidateQuery, [
+        body.status || null,
+      ]);
       return NextResponse.json(rows.rows);
     }
-    if (body?.role === "organization" && typeof body.organization === "string") {
+    if (
+      body?.role === "organization" &&
+      typeof body.organization === "string"
+    ) {
       await requireOrganizationAuthority({
         ...body,
         action: "list_organization",
@@ -42,7 +47,10 @@ export async function POST(request: NextRequest) {
     throw new Error("Invalid listing request");
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not list disasters" },
+      {
+        error:
+          error instanceof Error ? error.message : "Could not list disasters",
+      },
       { status: 403 }
     );
   }

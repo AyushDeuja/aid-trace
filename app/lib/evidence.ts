@@ -4,10 +4,80 @@ import path from "node:path";
 import { database } from "./organizations/db";
 
 const root = path.join(process.cwd(), "data", "evidence");
-const allowed = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const allowed = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 const maxBytes = 5 * 1024 * 1024;
-export async function ensureEvidenceSchema() { await database().query("SELECT 1 FROM schema_migrations LIMIT 1"); }
-export async function saveEvidence(file: File, uploader: string) { if (!allowed.has(file.type) || !file.size || file.size > maxBytes) throw new Error("Evidence must be a PDF, PNG, JPEG, or WebP under 5 MB"); const bytes=Buffer.from(await file.arrayBuffer()); const digest=createHash("sha256").update(bytes).digest("hex"); const id=randomUUID(), storageKey=randomUUID(); const filename=path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g,"_"); await mkdir(root,{recursive:true}); await writeFile(path.join(root,storageKey),bytes,{flag:"wx"}); await ensureEvidenceSchema(); await database().query(`INSERT INTO evidence_manifests(id,digest,filename,mime_type,byte_size,uploader,storage_key) VALUES($1,$2,$3,$4,$5,$6,$7)`,[id,digest,filename,file.type,file.size,uploader,storageKey]); return {uri:`aidtrace://evidence/${id}`,digest,metadata:{filename,mimeType:file.type,byteSize:file.size,uploader}}; }
-export async function evidenceById(id: string) { await ensureEvidenceSchema(); const r=await database().query("SELECT * FROM evidence_manifests WHERE id=$1",[id]); if(!r.rows[0]) throw new Error("Evidence not found"); const row=r.rows[0]; const bytes=await readFile(path.join(root,row.storage_key)); if(createHash("sha256").update(bytes).digest("hex")!==row.digest) throw new Error("Evidence digest mismatch"); return {row,bytes}; }
-export function parseEvidenceUri(uri: string) { const match=/^aidtrace:\/\/evidence\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(uri); if(!match) throw new Error("Invalid evidence URI"); return match[1]; }
-export async function linkEvidence(input:{uri:string;accountAddress:string;digest:string;signature:string}) { const id=parseEvidenceUri(input.uri); if(!/^[a-f0-9]{64}$/i.test(input.digest)||!input.accountAddress||!input.signature) throw new Error("Invalid evidence link"); await ensureEvidenceSchema(); const manifest=await database().query("SELECT digest FROM evidence_manifests WHERE id=$1",[id]); if(!manifest.rows[0]||manifest.rows[0].digest!==input.digest) throw new Error("Evidence manifest digest mismatch"); await database().query("INSERT INTO evidence_links(manifest_id,account_address,digest,signature) VALUES($1,$2,$3,$4) ON CONFLICT(manifest_id,account_address) DO UPDATE SET signature=EXCLUDED.signature",[id,input.accountAddress,input.digest,input.signature]); }
+export async function ensureEvidenceSchema() {
+  await database().query("SELECT 1 FROM schema_migrations LIMIT 1");
+}
+export async function saveEvidence(file: File, uploader: string) {
+  if (!allowed.has(file.type) || !file.size || file.size > maxBytes)
+    throw new Error("Evidence must be a PDF, PNG, JPEG, or WebP under 5 MB");
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  const id = randomUUID(),
+    storageKey = randomUUID();
+  const filename = path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, storageKey), bytes, { flag: "wx" });
+  await ensureEvidenceSchema();
+  await database().query(
+    `INSERT INTO evidence_manifests(id,digest,filename,mime_type,byte_size,uploader,storage_key) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+    [id, digest, filename, file.type, file.size, uploader, storageKey]
+  );
+  return {
+    uri: `aidtrace://evidence/${id}`,
+    digest,
+    metadata: { filename, mimeType: file.type, byteSize: file.size, uploader },
+  };
+}
+export async function evidenceById(id: string) {
+  await ensureEvidenceSchema();
+  const r = await database().query(
+    "SELECT * FROM evidence_manifests WHERE id=$1",
+    [id]
+  );
+  if (!r.rows[0]) throw new Error("Evidence not found");
+  const row = r.rows[0];
+  const bytes = await readFile(path.join(root, row.storage_key));
+  if (createHash("sha256").update(bytes).digest("hex") !== row.digest)
+    throw new Error("Evidence digest mismatch");
+  return { row, bytes };
+}
+export function parseEvidenceUri(uri: string) {
+  const match =
+    /^aidtrace:\/\/evidence\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(
+      uri
+    );
+  if (!match) throw new Error("Invalid evidence URI");
+  return match[1];
+}
+export async function linkEvidence(input: {
+  uri: string;
+  accountAddress: string;
+  digest: string;
+  signature: string;
+}) {
+  const id = parseEvidenceUri(input.uri);
+  if (
+    !/^[a-f0-9]{64}$/i.test(input.digest) ||
+    !input.accountAddress ||
+    !input.signature
+  )
+    throw new Error("Invalid evidence link");
+  await ensureEvidenceSchema();
+  const manifest = await database().query(
+    "SELECT digest FROM evidence_manifests WHERE id=$1",
+    [id]
+  );
+  if (!manifest.rows[0] || manifest.rows[0].digest !== input.digest)
+    throw new Error("Evidence manifest digest mismatch");
+  await database().query(
+    "INSERT INTO evidence_links(manifest_id,account_address,digest,signature) VALUES($1,$2,$3,$4) ON CONFLICT(manifest_id,account_address) DO UPDATE SET signature=EXCLUDED.signature",
+    [id, input.accountAddress, input.digest, input.signature]
+  );
+}

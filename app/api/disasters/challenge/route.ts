@@ -6,7 +6,17 @@ export async function POST(request: NextRequest) {
     if (
       typeof b?.wallet !== "string" ||
       typeof b?.action !== "string" ||
-      !["approve", "reject", "prepare_draft", "list_admin", "list_organization", "request_campaign", "record_draft", "record_submission", "record_active_campaign"].includes(b.action) ||
+      ![
+        "approve",
+        "reject",
+        "prepare_draft",
+        "list_admin",
+        "list_organization",
+        "request_campaign",
+        "record_draft",
+        "record_submission",
+        "record_active_campaign",
+      ].includes(b.action) ||
       (b.candidateId !== undefined && typeof b.candidateId !== "string")
     )
       throw new Error("Invalid challenge request");

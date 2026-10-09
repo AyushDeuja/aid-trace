@@ -14,6 +14,7 @@ import { ThemeToggle } from "./components/theme-toggle";
 import { ClusterSelect } from "./components/cluster-select";
 import { FraudReviewLink } from "./components/fraud-review-link";
 import { DisasterReviewLink } from "./components/disaster-review-link";
+import { AdminReviewLink } from "./components/admin-review-link";
 import { WalletButton } from "./components/wallet-button";
 import { useCluster } from "./components/cluster-context";
 
@@ -97,6 +98,7 @@ export default function Home() {
             </Link>
             <FraudReviewLink />
             <DisasterReviewLink />
+            <AdminReviewLink />
             <ThemeToggle />
             <ClusterSelect />
             <WalletButton />

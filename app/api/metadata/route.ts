@@ -6,7 +6,12 @@ import {
 } from "../../lib/metadata-documents";
 
 export const runtime = "nodejs";
-const kinds = new Set<MetadataKind>(["organization", "campaign", "allocation", "disbursement"]);
+const kinds = new Set<MetadataKind>([
+  "organization",
+  "campaign",
+  "allocation",
+  "disbursement",
+]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +20,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(await createMetadataDocument(kind, metadata));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Metadata creation failed" },
+      {
+        error:
+          error instanceof Error ? error.message : "Metadata creation failed",
+      },
       { status: 400 }
     );
   }
@@ -27,7 +35,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(await readMetadataDocument(uri));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Metadata query failed" },
+      {
+        error: error instanceof Error ? error.message : "Metadata query failed",
+      },
       { status: 404 }
     );
   }

@@ -87,23 +87,32 @@ function FinancePageClient() {
   const [payoutDescription, setPayoutDescription] = useState("");
   const [verifierWallet, setVerifierWallet] = useState("");
   const [uploading, setUploading] = useState<string | null>(null);
-  const [evidence, setEvidence] = useState<
-    Record<
-      string,
-      EvidenceAttachment
-    >
-  >({});
+  const [evidence, setEvidence] = useState<Record<string, EvidenceAttachment>>(
+    {}
+  );
   const [message, setMessage] = useState("");
   const [stage, setStage] = useState("");
   const [signature, setSignature] = useState("");
 
   const refresh = useCallback(async () => {
     if (!supported || !walletAddress) return;
-    let org = await fetchOrganization(cluster, requestedOrganization ? address(requestedOrganization) : await organizationPda(address(walletAddress)));
+    let org = await fetchOrganization(
+      cluster,
+      requestedOrganization
+        ? address(requestedOrganization)
+        : await organizationPda(address(walletAddress))
+    );
     if (!org && !requestedOrganization) {
-      const records = await listVerifierRecordsForWallet(cluster, address(walletAddress));
-      if (records.length === 1) org = await fetchOrganization(cluster, records[0].organization);
-      if (records.length > 1) setMessage("This verifier is registered for multiple organizations. Open an organization and use its Finance button to choose one.");
+      const records = await listVerifierRecordsForWallet(
+        cluster,
+        address(walletAddress)
+      );
+      if (records.length === 1)
+        org = await fetchOrganization(cluster, records[0].organization);
+      if (records.length > 1)
+        setMessage(
+          "This verifier is registered for multiple organizations. Open an organization and use its Finance button to choose one."
+        );
     }
     if (!org) {
       setCampaigns([]);
@@ -148,7 +157,13 @@ function FinancePageClient() {
       setDisbursements([]);
       setHistory(null);
     }
-  }, [cluster, requestedOrganization, selected?.address, supported, walletAddress]);
+  }, [
+    cluster,
+    requestedOrganization,
+    selected?.address,
+    supported,
+    walletAddress,
+  ]);
   useEffect(() => {
     // Start asynchronous chain reads after this render commits. This avoids a
     // synchronous state cascade while retaining refresh-on-wallet/network change.
@@ -388,7 +403,8 @@ function FinancePageClient() {
         const manifest = await response.json();
         if (!response.ok || manifest.digest !== evidenceDigest)
           throw new Error(
-            manifest.error || "Evidence manifest digest does not match the attachment"
+            manifest.error ||
+              "Evidence manifest digest does not match the attachment"
           );
         return verifyDeliveryIx(
           disbursement,
@@ -461,7 +477,16 @@ function FinancePageClient() {
           Connect the active organization authority wallet to manage funds.
         </p>
       )}
-      {(requestedOrganization || (selected && !campaigns.some((campaign) => campaign.authority === walletAddress))) && <p className="text-sm text-muted">Viewing the selected organization. Registered verifier wallets can review and decide on its uploaded evidence.</p>}
+      {(requestedOrganization ||
+        (selected &&
+          !campaigns.some(
+            (campaign) => campaign.authority === walletAddress
+          ))) && (
+        <p className="text-sm text-muted">
+          Viewing the selected organization. Registered verifier wallets can
+          review and decide on its uploaded evidence.
+        </p>
+      )}
       {walletAddress && !selected && (
         <p className="rounded border p-4">
           No campaigns owned by this wallet were found.
@@ -875,7 +900,11 @@ function FinancePageClient() {
 
 export default function FinancePage() {
   return (
-    <Suspense fallback={<main className="mx-auto max-w-6xl px-5 py-10">Loading finance…</main>}>
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-6xl px-5 py-10">Loading finance…</main>
+      }
+    >
       <FinancePageClient />
     </Suspense>
   );
