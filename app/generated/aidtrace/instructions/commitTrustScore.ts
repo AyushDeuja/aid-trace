@@ -62,7 +62,7 @@ export type CommitTrustScoreInstruction<
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TAccountAidtraceProgram extends string | AccountMeta<string> =
-    "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M",
+    "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r",
   TAccountMagicProgram extends string | AccountMeta<string> =
     "Magic11111111111111111111111111111111111111",
   TAccountMagicContext extends string | AccountMeta<string> =
@@ -286,7 +286,7 @@ export async function getCommitTrustScoreInstructionAsync<
   }
   if (!accounts.aidtraceProgram.value) {
     accounts.aidtraceProgram.value =
-      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+      "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
   }
   if (!accounts.magicProgram.value) {
     accounts.magicProgram.value =
@@ -468,7 +468,7 @@ export function getCommitTrustScoreInstruction<
   }
   if (!accounts.aidtraceProgram.value) {
     accounts.aidtraceProgram.value =
-      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+      "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
   }
   if (!accounts.magicProgram.value) {
     accounts.magicProgram.value =

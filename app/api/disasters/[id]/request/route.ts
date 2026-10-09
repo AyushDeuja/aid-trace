@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateCampaignMetadata } from "../../../../lib/campaigns/schema";
 import { requireOrganizationAuthority } from "../../../../lib/disaster-auth";
 import { database } from "../../../../lib/organizations/db";
+import { parseSolAmount } from "../../../../lib/campaigns/amount";
 
 export async function POST(
   request: NextRequest,
@@ -18,18 +19,20 @@ export async function POST(
       action: "request_campaign",
       candidateId: id,
     });
-    if (!/^\d+$/.test(body?.proposal?.goalLamports || ""))
-      throw new Error("Goal must be expressed as lamports");
+    if (typeof body?.proposal?.goalSol !== "string")
+      throw new Error("Goal must be entered in SOL");
+    const goalLamports = parseSolAmount(body.proposal.goalSol);
     const metadata = validateCampaignMetadata(body.proposal);
     const db = database();
     const updated = await db.query(
       "UPDATE disaster_candidates SET status='requested',updated_at=now() WHERE id=$1 AND status='detected' RETURNING id",
       [id]
     );
-    if (!updated.rows[0]) throw new Error("Candidate is no longer available for a request");
+    if (!updated.rows[0])
+      throw new Error("Candidate is no longer available for a request");
     const proposal = {
       ...metadata,
-      goalLamports: body.proposal.goalLamports,
+      goalLamports: goalLamports.toString(),
       endsAt: body.proposal.endsAt || null,
     };
     await db.query(
@@ -38,12 +41,20 @@ export async function POST(
     );
     await db.query(
       "INSERT INTO disaster_candidate_history(id,candidate_id,action,actor,proposal) VALUES($1,$2,'requested',$3,$4)",
-      [randomUUID(), id, body.wallet, { ...proposal, organization: body.organization }]
+      [
+        randomUUID(),
+        id,
+        body.wallet,
+        { ...proposal, organization: body.organization },
+      ]
     );
     return NextResponse.json({ status: "requested" });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not request campaign" },
+      {
+        error:
+          error instanceof Error ? error.message : "Could not request campaign",
+      },
       { status: 400 }
     );
   }

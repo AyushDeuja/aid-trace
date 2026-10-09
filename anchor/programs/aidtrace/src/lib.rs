@@ -16,7 +16,7 @@ use errors::AidTraceError;
 use events::*;
 use state::*;
 
-declare_id!("FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M");
+declare_id!("8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r");
 
 fn validate_magic_fee_vault(
     trust_record: &AccountInfo,

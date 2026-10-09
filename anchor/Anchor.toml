@@ -7,10 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-aidtrace = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M"
+aidtrace = "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r"
 
 [programs.localnet]
-aidtrace = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M"
+aidtrace = "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r"
 
 [provider]
 cluster = "localnet"
