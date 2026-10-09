@@ -5,6 +5,7 @@ import { fetchCampaign } from "../../../lib/campaigns/chain";
 import { fetchCanonicalFraudFlag } from "../../../lib/trust-chain";
 import { readMetadataDocument } from "../../../lib/metadata-documents";
 import { address } from "@solana/kit";
+import { requireAdminChallenge } from "../../../lib/admin-auth";
 
 const programId = "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r";
 const json = (value: unknown) =>
@@ -16,9 +17,22 @@ const metadata = async (uri: string | null, kind: "organization" | "campaign", d
   try { const doc = await readMetadataDocument(uri, kind); return doc.digest === digest ? { state: "verified" as const, value: doc.metadata } : { state: "digest_mismatch" as const, value: null }; }
   catch { return { state: "unavailable" as const, value: null }; }
 };
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const cluster = request.nextUrl.searchParams.get("cluster") === "localnet" ? "localnet" : "devnet";
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object")
+      return NextResponse.json({ error: "Admin authorization is required" }, { status: 403 });
+    const payload = body as Record<string, unknown>;
+    const cluster = payload.cluster === "localnet" ? "localnet" : "devnet";
+    try {
+      await requireAdminChallenge({
+        wallet: String(payload.wallet), action: "read_review_queue",
+        nonce: String(payload.nonce), message: String(payload.message),
+        signature: String(payload.signature), cluster,
+      });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Unauthorized" }, { status: 403 });
+    }
     const db = database();
     const [organizations, campaigns] = await Promise.all([
       db.query("SELECT address,metadata_uri,source_signature FROM chain_organization_projection WHERE cluster=$1 AND program_id=$2 ORDER BY updated_at DESC LIMIT 100", [cluster, programId]),

@@ -14,8 +14,19 @@ export default function AdminReviewPage() {
   const { cluster, getExplorerUrl } = useCluster(); const { wallet } = useWallet(); const { send, isSending } = useSendTransaction();
   const [allowed, setAllowed] = useState(false); const [data, setData] = useState<Review>({ organizations: [], campaigns: [], disasters: [] }); const [message, setMessage] = useState("");
   const walletAddress = wallet?.account.address;
-  const load = useCallback(async () => { if (!allowed) return; const r = await fetch(`/api/admin/review?cluster=${cluster}`); const body = await r.json(); if (!r.ok) throw new Error(body.error || "Review data unavailable"); setData(body); }, [allowed, cluster]);
-  useEffect(() => { let live = true; if (!walletAddress) { setAllowed(false); return; } void fetchAdmin(cluster).then(a => { if (live) setAllowed(a === walletAddress); }).catch(() => live && setAllowed(false)); return () => { live = false; }; }, [cluster, walletAddress]);
+  const load = useCallback(async () => {
+    if (!allowed || !wallet?.signMessage || !walletAddress) throw new Error("A connected admin wallet with message signing is required");
+    const challengeResponse = await fetch("/api/admin/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: walletAddress, action: "read_review_queue" }) });
+    const challenge = await challengeResponse.json();
+    if (!challengeResponse.ok) throw new Error(challenge.error || "Could not authorize review queue");
+    const signed = await wallet.signMessage(new TextEncoder().encode(challenge.message));
+    if (new TextDecoder().decode(signed.message) !== challenge.message) throw new Error("Wallet returned a different signed message");
+    const response = await fetch("/api/admin/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: walletAddress, action: "read_review_queue", nonce: challenge.nonce, message: challenge.message, signature: btoa(String.fromCharCode(...signed.signature)), cluster }) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Review data unavailable");
+    setData(body);
+  }, [allowed, cluster, wallet, walletAddress]);
+  useEffect(() => { let live = true; setData({ organizations: [], campaigns: [], disasters: [] }); setMessage(""); if (!walletAddress) { setAllowed(false); return; } void fetchAdmin(cluster).then(a => { if (live) setAllowed(a === walletAddress); }).catch(() => live && setAllowed(false)); return () => { live = false; }; }, [cluster, walletAddress]);
   useEffect(() => { void load().catch(e => setMessage(e instanceof Error ? e.message : "Review data unavailable")); }, [load]);
   const transact = async (build: () => Promise<any>, label: string) => { try { setMessage("Awaiting wallet approval"); const signature = await send({ instructions: [await build()] }); for (let i = 0; i < 30; i++) { const s = await rpcCall<any>(cluster, "getSignatureStatuses", [[signature], { searchTransactionHistory: true }]); if (s.value[0]?.err) throw new Error("Transaction failed on Solana"); if (["confirmed", "finalized"].includes(s.value[0]?.confirmationStatus)) { setMessage(`${label} confirmed: ${signature}`); await load(); return; } await new Promise(r => setTimeout(r, 1000)); } throw new Error("Confirmation timed out; check explorer before retrying"); } catch (e) { setMessage(e instanceof Error ? e.message : "Transaction failed"); } };
   if (!allowed) return <main className="mx-auto max-w-5xl space-y-4 px-5 py-10"><WalletButton /><p role="alert" className="rounded border p-4">Connect the GlobalConfig admin wallet to access review.</p></main>;
