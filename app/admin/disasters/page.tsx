@@ -148,6 +148,13 @@ export default function DisasterReview() {
     );
     if (!organization)
       throw new Error("Organization is unavailable on the selected cluster");
+    if (organization.status !== "Active" || !organization.verified) {
+      throw new Error(
+        `The linked organization ${organization.address} cannot create a disaster campaign yet: ` +
+          `status is ${organization.status} and verification is ${organization.verified ? "complete" : "required"}. ` +
+          "A GlobalConfig admin must verify it and set it to Active in /org before retrying."
+      );
+    }
     setStage("Awaiting wallet approval to create the active disaster campaign");
     const ix = await createAdminDisasterCampaignIx(
       organization.address,
@@ -193,7 +200,10 @@ export default function DisasterReview() {
         ...record,
         organization: approval.organization,
         phase: "active_created",
-        signature,
+        // Keep the signed-message authorization in `record.signature`.
+        // The Solana transaction signature is evidence of the campaign
+        // creation and must not replace it.
+        campaignSignature: signature,
         campaignAddress,
       }),
     });
