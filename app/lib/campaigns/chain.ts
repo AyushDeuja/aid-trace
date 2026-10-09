@@ -137,6 +137,42 @@ export async function createCampaignIx(
     )
   );
 }
+/**
+ * Admin-only disaster workflow. The admin pays rent and starts an active
+ * campaign, but the resulting campaign authority is the organization.
+ */
+export async function createAdminDisasterCampaignIx(
+  org: Address,
+  admin: Address,
+  id: bigint,
+  goal: bigint,
+  endsAt: bigint | null,
+  digest: string,
+  uri: string
+) {
+  const campaign = await campaignPda(org, id);
+  const uriBytes = enc.encode(uri);
+  return ix(
+    "create_admin_disaster_campaign",
+    [
+      ro(await configPda()),
+      rw(org),
+      rw(campaign),
+      rw(await vaultPda(campaign)),
+      sig(admin),
+      ro(system),
+    ],
+    join(
+      u64(id),
+      u64(goal),
+      Uint8Array.of(endsAt === null ? 0 : 1),
+      endsAt === null ? new Uint8Array() : i64(endsAt),
+      digestBytes(digest),
+      u32(uriBytes.length),
+      uriBytes
+    )
+  );
+}
 export async function updateCampaignIx(
   c: Campaign,
   authority: Address,

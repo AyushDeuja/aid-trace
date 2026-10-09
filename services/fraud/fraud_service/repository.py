@@ -13,7 +13,7 @@ from psycopg.rows import dict_row
 
 from .scoring import MODEL_CONFIGURATION, MODEL_VERSION, Evaluation, evaluate
 
-PROGRAM_ID = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M"
+PROGRAM_ID = "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r"
 
 def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)

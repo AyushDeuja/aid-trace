@@ -9,6 +9,7 @@
 export * from "./acceptOrganizationAuthority";
 export * from "./cancelAllocation";
 export * from "./commitTrustScore";
+export * from "./createAdminDisasterCampaign";
 export * from "./createAllocation";
 export * from "./createCampaign";
 export * from "./delegateTrustScore";

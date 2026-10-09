@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const PROGRAM_ID = address("FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M");
+const PROGRAM_ID = address("8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 // const rpc = createSolanaRpc("http://127.0.0.1:8899");
 // const rpcSubscriptions = createSolanaRpcSubscriptions("ws://127.0.0.1:8900");

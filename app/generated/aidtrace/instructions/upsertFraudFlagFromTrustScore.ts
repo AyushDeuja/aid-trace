@@ -53,7 +53,7 @@ export type UpsertFraudFlagFromTrustScoreInstruction<
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TAccountSourceProgram extends string | AccountMeta<string> =
-    "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M",
+    "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r",
   TAccountEscrowAuth extends string | AccountMeta<string> = string,
   TAccountEscrow extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -206,7 +206,7 @@ export async function getUpsertFraudFlagFromTrustScoreInstructionAsync<
   }
   if (!accounts.sourceProgram.value) {
     accounts.sourceProgram.value =
-      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+      "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -315,7 +315,7 @@ export function getUpsertFraudFlagFromTrustScoreInstruction<
   }
   if (!accounts.sourceProgram.value) {
     accounts.sourceProgram.value =
-      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+      "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");

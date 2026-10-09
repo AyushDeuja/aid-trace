@@ -6,6 +6,7 @@ import {
   vaultPda,
   donationPda,
   createCampaignIx,
+  createAdminDisasterCampaignIx,
   donateIx,
   type Campaign,
 } from "../app/lib/campaigns/chain";
@@ -53,24 +54,76 @@ test("creation and donation use program-owned accounts and donor signer", async 
   assert.equal(donate.accounts?.[5]?.role, AccountRole.WRITABLE_SIGNER);
 });
 test("SOL amount conversion is exact and rejects invalid input", () => {
+  assert.equal(parseSolAmount("1"), 1_000_000_000n);
+  assert.equal(parseSolAmount("12.345678901"), 12_345_678_901n);
   assert.equal(parseSolAmount("0.000000001"), 1n);
   assert.equal(displaySol(1_200_000_001n), "1.200000001");
-  for (const value of ["0", "-1", "1.0000000001", "1e3", " 1", "1."])
+  for (const value of [
+    "0",
+    "-1",
+    "1.0000000001",
+    "1e3",
+    " 1",
+    "1.",
+    "18446744073.709551616",
+  ])
     assert.throws(() => parseSolAmount(value));
+});
+test("admin disaster creation assigns the admin signer and canonical campaign PDAs", async () => {
+  const campaign = await campaignPda(org, 0n);
+  const create = await createAdminDisasterCampaignIx(
+    org,
+    donor,
+    0n,
+    1_000_000_000n,
+    null,
+    "cc".repeat(32),
+    "aidtrace://campaign/550e8400-e29b-41d4-a716-446655440000"
+  );
+  assert.equal(create.accounts?.[2]?.address, campaign);
+  assert.equal(create.accounts?.[3]?.address, await vaultPda(campaign));
+  assert.equal(create.accounts?.[4]?.address, donor);
+  assert.equal(create.accounts?.[4]?.role, AccountRole.WRITABLE_SIGNER);
 });
 test("allocation/disbursement PDAs and fund reservation instructions are deterministic", async () => {
   const campaign = await campaignPda(org, 0n);
   const state = {
-    address: campaign, organization: org, authority: donor, campaignId: 0n,
-    amountRaised: 10_000n, amountDisbursed: 2_000n, amountReserved: 3_000n,
+    address: campaign,
+    organization: org,
+    authority: donor,
+    campaignId: 0n,
+    amountRaised: 10_000n,
+    amountDisbursed: 2_000n,
+    amountReserved: 3_000n,
     nextAllocationId: 4n,
   } as Campaign;
   assert.equal(availableFunds(state), 5_000n);
   const allocation = await allocationPda(campaign, 4n);
-  const create = await createAllocationIx(state, donor, donor, 1_000n, "bb".repeat(32));
+  const create = await createAllocationIx(
+    state,
+    donor,
+    donor,
+    1_000n,
+    "bb".repeat(32)
+  );
   assert.equal(create.accounts?.[3]?.address, allocation);
-  const record = { address: allocation, campaign, allocationId: 4n, recipient: donor, nextDisbursementId: 2n } as Allocation;
-  const payout = await recordDisbursementIx(record, state, donor, 500n, "cc".repeat(32));
-  assert.equal(payout.accounts?.[5]?.address, await disbursementPda(allocation, 2n));
+  const record = {
+    address: allocation,
+    campaign,
+    allocationId: 4n,
+    recipient: donor,
+    nextDisbursementId: 2n,
+  } as Allocation;
+  const payout = await recordDisbursementIx(
+    record,
+    state,
+    donor,
+    500n,
+    "cc".repeat(32)
+  );
+  assert.equal(
+    payout.accounts?.[5]?.address,
+    await disbursementPda(allocation, 2n)
+  );
   assert.equal(payout.accounts?.[6]?.address, donor);
 });

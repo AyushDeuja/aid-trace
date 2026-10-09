@@ -20,6 +20,7 @@ import {
   parseAcceptOrganizationAuthorityInstruction,
   parseCancelAllocationInstruction,
   parseCommitTrustScoreInstruction,
+  parseCreateAdminDisasterCampaignInstruction,
   parseCreateAllocationInstruction,
   parseCreateCampaignInstruction,
   parseDelegateTrustScoreInstruction,
@@ -48,6 +49,7 @@ import {
   type ParsedAcceptOrganizationAuthorityInstruction,
   type ParsedCancelAllocationInstruction,
   type ParsedCommitTrustScoreInstruction,
+  type ParsedCreateAdminDisasterCampaignInstruction,
   type ParsedCreateAllocationInstruction,
   type ParsedCreateCampaignInstruction,
   type ParsedDelegateTrustScoreInstruction,
@@ -76,7 +78,7 @@ import {
 } from "../instructions";
 
 export const AIDTRACE_PROGRAM_ADDRESS =
-  "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+  "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
 
 export enum AidtraceAccount {
   Allocation,
@@ -250,6 +252,7 @@ export enum AidtraceInstruction {
   AcceptOrganizationAuthority,
   CancelAllocation,
   CommitTrustScore,
+  CreateAdminDisasterCampaign,
   CreateAllocation,
   CreateCampaign,
   DelegateTrustScore,
@@ -313,6 +316,17 @@ export function identifyAidtraceInstruction(
     )
   ) {
     return AidtraceInstruction.CommitTrustScore;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([128, 15, 182, 0, 68, 113, 46, 66]),
+      ),
+      0,
+    )
+  ) {
+    return AidtraceInstruction.CreateAdminDisasterCampaign;
   }
   if (
     containsBytes(
@@ -595,7 +609,7 @@ export function identifyAidtraceInstruction(
 }
 
 export type ParsedAidtraceInstruction<
-  TProgram extends string = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M",
+  TProgram extends string = "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r",
 > =
   | ({
       instructionType: AidtraceInstruction.AcceptOrganizationAuthority;
@@ -606,6 +620,9 @@ export type ParsedAidtraceInstruction<
   | ({
       instructionType: AidtraceInstruction.CommitTrustScore;
     } & ParsedCommitTrustScoreInstruction<TProgram>)
+  | ({
+      instructionType: AidtraceInstruction.CreateAdminDisasterCampaign;
+    } & ParsedCreateAdminDisasterCampaignInstruction<TProgram>)
   | ({
       instructionType: AidtraceInstruction.CreateAllocation;
     } & ParsedCreateAllocationInstruction<TProgram>)
@@ -706,6 +723,13 @@ export function parseAidtraceInstruction<TProgram extends string>(
       return {
         instructionType: AidtraceInstruction.CommitTrustScore,
         ...parseCommitTrustScoreInstruction(instruction),
+      };
+    }
+    case AidtraceInstruction.CreateAdminDisasterCampaign: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: AidtraceInstruction.CreateAdminDisasterCampaign,
+        ...parseCreateAdminDisasterCampaignInstruction(instruction),
       };
     }
     case AidtraceInstruction.CreateAllocation: {

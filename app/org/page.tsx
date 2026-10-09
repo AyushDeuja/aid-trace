@@ -276,6 +276,14 @@ export default function OrganizationPage() {
           >
             Open finance & verification
           </a>
+          {canManage && (
+            <a
+              className="inline-flex rounded border px-3 py-2 text-sm hover:bg-muted"
+              href="/org/disasters"
+            >
+              Review disaster opportunities
+            </a>
+          )}
           {canManage && selected.status !== "Closed" && (
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-semibold">Manage profile</h3>

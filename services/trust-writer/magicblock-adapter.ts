@@ -28,7 +28,7 @@ import { getTrustScoreDecoder } from "../../app/generated/aidtrace/accounts/trus
 import { RiskBand } from "../../app/generated/aidtrace/types/riskBand";
 
 const DEFAULT_PROGRAM = new PublicKey(
-  "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M"
+  "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r"
 );
 const SYSTEM_PROGRAM = new PublicKey("11111111111111111111111111111111");
 const PROPAGATION_ATTEMPTS = 12;

@@ -23,7 +23,7 @@ export async function findAutomationPayerPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">,
+    programAddress = "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

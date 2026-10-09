@@ -77,7 +77,7 @@ export type DelegateTrustScoreInstruction<
   TAccountAutomationPayer extends string | AccountMeta<string> = string,
   TAccountTrustAuthority extends string | AccountMeta<string> = string,
   TAccountOwnerProgram extends string | AccountMeta<string> =
-    "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M",
+    "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r",
   TAccountDelegationProgram extends string | AccountMeta<string> =
     "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh",
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -364,7 +364,7 @@ export async function getDelegateTrustScoreInstructionAsync<
   }
   if (!accounts.ownerProgram.value) {
     accounts.ownerProgram.value =
-      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+      "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
   }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
@@ -554,7 +554,7 @@ export function getDelegateTrustScoreInstruction<
   }
   if (!accounts.ownerProgram.value) {
     accounts.ownerProgram.value =
-      "FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M" as Address<"FsnkvMW3VLrpY1oarGW3ePS22bwoCNpP9PZdMFGW6E4M">;
+      "8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r" as Address<"8tcYj5qT3GAwhhHmK8UgHtyCZq7MgD8nCYGhC7rwEW5r">;
   }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
