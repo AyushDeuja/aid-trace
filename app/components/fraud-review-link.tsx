@@ -15,14 +15,29 @@ export function FraudReviewLink() {
   useEffect(() => {
     let current = true;
     if (!walletAddress || (cluster !== "devnet" && cluster !== "localnet")) {
-      const timer = window.setTimeout(() => { if (current) setIsAdmin(false); }, 0);
-      return () => { current = false; window.clearTimeout(timer); };
+      const timer = window.setTimeout(() => {
+        if (current) setIsAdmin(false);
+      }, 0);
+      return () => {
+        current = false;
+        window.clearTimeout(timer);
+      };
     }
     void fetchAdmin(cluster)
-      .then((admin) => { if (current) setIsAdmin(admin === walletAddress); })
-      .catch(() => { if (current) setIsAdmin(false); });
-    return () => { current = false; };
+      .then((admin) => {
+        if (current) setIsAdmin(admin === walletAddress);
+      })
+      .catch(() => {
+        if (current) setIsAdmin(false);
+      });
+    return () => {
+      current = false;
+    };
   }, [cluster, walletAddress]);
 
-  return isAdmin ? <Link href="/admin/fraud" className="text-sm underline">Fraud review</Link> : null;
+  return isAdmin ? (
+    <Link href="/admin/fraud" className="text-sm underline">
+      Fraud review
+    </Link>
+  ) : null;
 }

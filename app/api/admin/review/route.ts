@@ -12,38 +12,127 @@ const json = (value: unknown) =>
   JSON.stringify(value, (_key, current) =>
     typeof current === "bigint" ? current.toString() : current
   );
-const metadata = async (uri: string | null, kind: "organization" | "campaign", digest: string) => {
+const metadata = async (
+  uri: string | null,
+  kind: "organization" | "campaign",
+  digest: string
+) => {
   if (!uri) return { state: "unlinked" as const, value: null };
-  try { const doc = await readMetadataDocument(uri, kind); return doc.digest === digest ? { state: "verified" as const, value: doc.metadata } : { state: "digest_mismatch" as const, value: null }; }
-  catch { return { state: "unavailable" as const, value: null }; }
+  try {
+    const doc = await readMetadataDocument(uri, kind);
+    return doc.digest === digest
+      ? { state: "verified" as const, value: doc.metadata }
+      : { state: "digest_mismatch" as const, value: null };
+  } catch {
+    return { state: "unavailable" as const, value: null };
+  }
 };
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object")
-      return NextResponse.json({ error: "Admin authorization is required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin authorization is required" },
+        { status: 403 }
+      );
     const payload = body as Record<string, unknown>;
     const cluster = payload.cluster === "localnet" ? "localnet" : "devnet";
     try {
       await requireAdminChallenge({
-        wallet: String(payload.wallet), action: "read_review_queue",
-        nonce: String(payload.nonce), message: String(payload.message),
-        signature: String(payload.signature), cluster,
+        wallet: String(payload.wallet),
+        action: "read_review_queue",
+        nonce: String(payload.nonce),
+        message: String(payload.message),
+        signature: String(payload.signature),
+        cluster,
       });
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Unauthorized" }, { status: 403 });
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Unauthorized" },
+        { status: 403 }
+      );
     }
     const db = database();
     const [organizations, campaigns] = await Promise.all([
-      db.query("SELECT address,metadata_uri,source_signature FROM chain_organization_projection WHERE cluster=$1 AND program_id=$2 ORDER BY updated_at DESC LIMIT 100", [cluster, programId]),
-      db.query("SELECT address,metadata_uri,source_signature FROM chain_campaign_projection WHERE cluster=$1 AND program_id=$2 ORDER BY updated_at DESC LIMIT 100", [cluster, programId]),
+      db.query(
+        "SELECT address,metadata_uri,source_signature FROM chain_organization_projection WHERE cluster=$1 AND program_id=$2 ORDER BY updated_at DESC LIMIT 100",
+        [cluster, programId]
+      ),
+      db.query(
+        "SELECT address,metadata_uri,source_signature FROM chain_campaign_projection WHERE cluster=$1 AND program_id=$2 ORDER BY updated_at DESC LIMIT 100",
+        [cluster, programId]
+      ),
     ]);
-    const orgs = await Promise.all(organizations.rows.map(async row => { try { const value = await fetchOrganization(cluster, address(row.address)); if (!value) return null; return { ...value, metadataDigest: value.metadataDigest, metadata: await metadata(row.metadata_uri, "organization", value.metadataDigest), sourceSignature: row.source_signature }; } catch (error) { return { address: row.address, unavailable: true, error: error instanceof Error ? error.message : "canonical read failed" }; } }));
-    const items = await Promise.all(campaigns.rows.map(async row => { try { const value = await fetchCampaign(cluster, address(row.address)); if (!value) return null; const flag = await fetchCanonicalFraudFlag(cluster, value.address).catch(() => null); return { ...value, metadataDigest: value.metadataDigest, metadata: await metadata(row.metadata_uri, "campaign", value.metadataDigest), fraudFlag: flag, sourceSignature: row.source_signature }; } catch (error) { return { address: row.address, unavailable: true, error: error instanceof Error ? error.message : "canonical read failed" }; } }));
-    const requested = await db.query("SELECT id,title,location,disaster_type,status FROM disaster_candidates WHERE status='requested' ORDER BY updated_at DESC LIMIT 100");
+    const orgs = await Promise.all(
+      organizations.rows.map(async (row) => {
+        try {
+          const value = await fetchOrganization(cluster, address(row.address));
+          if (!value) return null;
+          return {
+            ...value,
+            metadataDigest: value.metadataDigest,
+            metadata: await metadata(
+              row.metadata_uri,
+              "organization",
+              value.metadataDigest
+            ),
+            sourceSignature: row.source_signature,
+          };
+        } catch (error) {
+          return {
+            address: row.address,
+            unavailable: true,
+            error:
+              error instanceof Error ? error.message : "canonical read failed",
+          };
+        }
+      })
+    );
+    const items = await Promise.all(
+      campaigns.rows.map(async (row) => {
+        try {
+          const value = await fetchCampaign(cluster, address(row.address));
+          if (!value) return null;
+          const flag = await fetchCanonicalFraudFlag(
+            cluster,
+            value.address
+          ).catch(() => null);
+          return {
+            ...value,
+            metadataDigest: value.metadataDigest,
+            metadata: await metadata(
+              row.metadata_uri,
+              "campaign",
+              value.metadataDigest
+            ),
+            fraudFlag: flag,
+            sourceSignature: row.source_signature,
+          };
+        } catch (error) {
+          return {
+            address: row.address,
+            unavailable: true,
+            error:
+              error instanceof Error ? error.message : "canonical read failed",
+          };
+        }
+      })
+    );
+    const requested = await db.query(
+      "SELECT id,title,location,disaster_type,status FROM disaster_candidates WHERE status='requested' ORDER BY updated_at DESC LIMIT 100"
+    );
     return new NextResponse(
-      json({ organizations: orgs.filter(Boolean), campaigns: items.filter(Boolean), disasters: requested.rows }),
+      json({
+        organizations: orgs.filter(Boolean),
+        campaigns: items.filter(Boolean),
+        disasters: requested.rows,
+      }),
       { headers: { "content-type": "application/json" } }
     );
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Review unavailable" }, { status: 503 }); }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Review unavailable" },
+      { status: 503 }
+    );
+  }
 }

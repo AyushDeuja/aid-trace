@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { database } from "./organizations/db";
-import { validateMetadata, type OrganizationMetadata } from "./organizations/metadata";
-import { validateCampaignMetadata, type CampaignMetadata } from "./campaigns/schema";
+import {
+  validateMetadata,
+  type OrganizationMetadata,
+} from "./organizations/metadata";
+import {
+  validateCampaignMetadata,
+  type CampaignMetadata,
+} from "./campaigns/schema";
 
 export type AllocationMetadata = {
   purpose: string;
@@ -10,14 +16,20 @@ export type AllocationMetadata = {
 };
 export type DisbursementMetadata = { description: string };
 
-export type MetadataKind = "organization" | "campaign" | "allocation" | "disbursement";
+export type MetadataKind =
+  "organization" | "campaign" | "allocation" | "disbursement";
 export type MetadataDocument = {
   uri: string;
   digest: string;
-  metadata: OrganizationMetadata | CampaignMetadata | AllocationMetadata | DisbursementMetadata;
+  metadata:
+    | OrganizationMetadata
+    | CampaignMetadata
+    | AllocationMetadata
+    | DisbursementMetadata;
 };
 
-const uriPattern = /^aidtrace:\/\/(organization|campaign|allocation|disbursement)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const uriPattern =
+  /^aidtrace:\/\/(organization|campaign|allocation|disbursement)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 export async function ensureMetadataSchema() {
   // Schema ownership belongs to reviewed SQL migrations (`npm run db:migrate`).
@@ -40,7 +52,9 @@ function normalize(kind: MetadataKind, value: unknown) {
       category: text(record.category, "category", 80),
       description: text(record.description, "description", 2_000),
     } satisfies AllocationMetadata;
-  return { description: text(record.description, "description", 2_000) } satisfies DisbursementMetadata;
+  return {
+    description: text(record.description, "description", 2_000),
+  } satisfies DisbursementMetadata;
 }
 
 export function parseMetadataUri(uri: string, expectedKind?: MetadataKind) {

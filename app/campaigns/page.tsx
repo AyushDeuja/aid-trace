@@ -191,7 +191,8 @@ export default function CampaignsPage() {
         <section className="space-y-3 rounded-xl border p-5">
           <h2 className="text-xl font-semibold">Create campaign</h2>
           <p>
-            Enter campaign details. They are saved and hash-verified by AidTrace.
+            Enter campaign details. They are saved and hash-verified by
+            AidTrace.
           </p>
           <select
             className="w-full rounded border p-2"
@@ -206,10 +207,30 @@ export default function CampaignsPage() {
                 </option>
               ))}
           </select>
-          <input className="w-full rounded border p-2" placeholder="Campaign title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <textarea className="w-full rounded border p-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-          <input className="w-full rounded border p-2" placeholder="Disaster type" value={disasterType} onChange={(e) => setDisasterType(e.target.value)} />
-          <input className="w-full rounded border p-2" placeholder="Location" value={location} onChange={(e) => setLocation(e.target.value)} />
+          <input
+            className="w-full rounded border p-2"
+            placeholder="Campaign title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <textarea
+            className="w-full rounded border p-2"
+            placeholder="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <input
+            className="w-full rounded border p-2"
+            placeholder="Disaster type"
+            value={disasterType}
+            onChange={(e) => setDisasterType(e.target.value)}
+          />
+          <input
+            className="w-full rounded border p-2"
+            placeholder="Location"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          />
           <input
             className="w-full rounded border p-2"
             placeholder="Goal in SOL"
@@ -218,7 +239,14 @@ export default function CampaignsPage() {
           />
           <button
             className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
-            disabled={isSending || !title || !description || !disasterType || !location || !goal}
+            disabled={
+              isSending ||
+              !title ||
+              !description ||
+              !disasterType ||
+              !location ||
+              !goal
+            }
             onClick={() => void create()}
           >
             Create draft

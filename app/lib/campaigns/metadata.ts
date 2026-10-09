@@ -1,9 +1,6 @@
 import { validateMetadataUri } from "../organizations/metadata";
 import { readMetadataDocument } from "../metadata-documents";
-import {
-  validateCampaignMetadata,
-  type CampaignMetadata,
-} from "./schema";
+import { validateCampaignMetadata, type CampaignMetadata } from "./schema";
 
 export { validateCampaignMetadata, type CampaignMetadata } from "./schema";
 export async function fetchCampaignMetadata(uri: string) {

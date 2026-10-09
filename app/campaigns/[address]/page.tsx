@@ -268,10 +268,30 @@ export default function CampaignDetailPage() {
           {walletAddress && walletAddress === organizationAuthority && (
             <section className="space-y-3 rounded-xl border p-5">
               <h2 className="text-xl font-semibold">Manage campaign</h2>
-              <input className="w-full rounded border p-2" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Campaign title" />
-              <textarea className="w-full rounded border p-2" value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Campaign description" />
-              <input className="w-full rounded border p-2" value={disasterType} onChange={(e) => setDisasterType(e.target.value)} aria-label="Disaster type" />
-              <input className="w-full rounded border p-2" value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Location" />
+              <input
+                className="w-full rounded border p-2"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                aria-label="Campaign title"
+              />
+              <textarea
+                className="w-full rounded border p-2"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                aria-label="Campaign description"
+              />
+              <input
+                className="w-full rounded border p-2"
+                value={disasterType}
+                onChange={(e) => setDisasterType(e.target.value)}
+                aria-label="Disaster type"
+              />
+              <input
+                className="w-full rounded border p-2"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                aria-label="Location"
+              />
               <input
                 className="w-full rounded border p-2"
                 value={goal}

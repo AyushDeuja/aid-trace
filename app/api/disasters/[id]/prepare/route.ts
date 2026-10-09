@@ -20,7 +20,9 @@ export async function POST(
     if (!link || link.organization_address !== body.organization)
       throw new Error("Candidate is not assigned to this organization");
     if (link.status !== "approved")
-      throw new Error("Only an admin-approved request can be prepared as a campaign draft");
+      throw new Error(
+        "Only an admin-approved request can be prepared as a campaign draft"
+      );
     await requireOrganizationAuthority({
       ...body,
       action: "prepare_draft",

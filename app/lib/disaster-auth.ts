@@ -41,7 +41,12 @@ export async function issueChallenge(
   );
   return {
     nonce,
-    message: challengeMessage({ action, candidate_id: candidateId || null, nonce, expires_at: expiry }),
+    message: challengeMessage({
+      action,
+      candidate_id: candidateId || null,
+      nonce,
+      expires_at: expiry,
+    }),
   };
 }
 export async function requireAdmin(payload: {
@@ -72,7 +77,9 @@ export async function requireAdmin(payload: {
   if (expected !== payload.wallet)
     throw new Error("Connected wallet is not the GlobalConfig admin");
   if (payload.message !== challengeMessage(row))
-    throw new Error("Challenge message does not match the issued authorization");
+    throw new Error(
+      "Challenge message does not match the issued authorization"
+    );
   const key = verificationKey(payload.wallet);
   if (
     !verify(
@@ -87,7 +94,8 @@ export async function requireAdmin(payload: {
     "UPDATE disaster_auth_challenges SET used_at=now() WHERE nonce=$1 AND used_at IS NULL RETURNING nonce",
     [payload.nonce]
   );
-  if (!consumed.rows[0]) throw new Error("Authorization challenge was already used");
+  if (!consumed.rows[0])
+    throw new Error("Authorization challenge was already used");
 }
 export async function requireOrganizationAuthority(payload: {
   nonce: string;
@@ -121,7 +129,9 @@ export async function requireOrganizationAuthority(payload: {
   if (!organization || organization.authority !== payload.wallet)
     throw new Error("Connected wallet is not the organization authority");
   if (payload.message !== challengeMessage(row))
-    throw new Error("Challenge message does not match the issued authorization");
+    throw new Error(
+      "Challenge message does not match the issued authorization"
+    );
   const key = verificationKey(payload.wallet);
   if (
     !verify(
@@ -136,5 +146,6 @@ export async function requireOrganizationAuthority(payload: {
     "UPDATE disaster_auth_challenges SET used_at=now() WHERE nonce=$1 AND used_at IS NULL RETURNING nonce",
     [payload.nonce]
   );
-  if (!consumed.rows[0]) throw new Error("Authorization challenge was already used");
+  if (!consumed.rows[0])
+    throw new Error("Authorization challenge was already used");
 }

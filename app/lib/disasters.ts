@@ -43,19 +43,20 @@ function usgs(payload: unknown): Normalized[] {
     ? features
         .filter((item) => Number(record(record(item).properties).mag) >= 5)
         .map((item) => {
-          const feature = record(item), properties = record(feature.properties);
+          const feature = record(item),
+            properties = record(feature.properties);
           return {
-          provider: "usgs",
-          externalId: String(feature.id || ""),
-          sourceUrl: String(properties.url || USGS),
-          occurredAt: properties.time
-            ? new Date(String(properties.time)).toISOString()
-            : null,
-          disasterType: "Earthquake",
-          title: clean(properties.title, 240) || "USGS earthquake",
-          location: clean(properties.place, 240) || "Location unavailable",
-          payload: item,
-        };
+            provider: "usgs",
+            externalId: String(feature.id || ""),
+            sourceUrl: String(properties.url || USGS),
+            occurredAt: properties.time
+              ? new Date(String(properties.time)).toISOString()
+              : null,
+            disasterType: "Earthquake",
+            title: clean(properties.title, 240) || "USGS earthquake",
+            location: clean(properties.place, 240) || "Location unavailable",
+            payload: item,
+          };
         })
     : [];
 }
@@ -65,7 +66,8 @@ function gdacs(payload: unknown): Normalized[] {
   return Array.isArray(rows)
     ? rows
         .filter((item) => {
-          const source = record(item), properties = record(source.properties);
+          const source = record(item),
+            properties = record(source.properties);
           return ["orange", "red"].includes(
             String(
               properties.alertlevel || source.alertlevel || ""
@@ -74,7 +76,9 @@ function gdacs(payload: unknown): Normalized[] {
         })
         .map((item) => {
           const source = record(item);
-          const p = Object.keys(record(source.properties)).length ? record(source.properties) : source;
+          const p = Object.keys(record(source.properties)).length
+            ? record(source.properties)
+            : source;
           const id = String(p.eventid || p.id || "");
           return {
             provider: "gdacs" as const,
@@ -97,7 +101,8 @@ export async function ingestDisasters() {
     ["gdacs", GDACS, gdacs],
     ["usgs", USGS, usgs],
   ];
-  const result: Array<{ provider: string; items?: number; error?: string }> = [];
+  const result: Array<{ provider: string; items?: number; error?: string }> =
+    [];
   for (const [provider, url, parser] of sources) {
     const run = randomUUID();
     await db.query(

@@ -205,5 +205,8 @@ test("AidTrace metadata references are typed and UUID-bound", () => {
     id: "550e8400-e29b-41d4-a716-446655440000",
   });
   assert.throws(() => parseMetadataUri(uri, "organization"), /Invalid/);
-  assert.throws(() => parseMetadataUri("aidtrace://campaign/not-a-uuid"), /Invalid/);
+  assert.throws(
+    () => parseMetadataUri("aidtrace://campaign/not-a-uuid"),
+    /Invalid/
+  );
 });

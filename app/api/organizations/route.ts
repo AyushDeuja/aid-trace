@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { address } from "@solana/kit";
-import {
-  database,
-  ensureOrganizationSchema,
-} from "../../lib/organizations/db";
-import {
-  fetchOrganization,
-  PROGRAM_ID,
-} from "../../lib/organizations/chain";
+import { database, ensureOrganizationSchema } from "../../lib/organizations/db";
+import { fetchOrganization, PROGRAM_ID } from "../../lib/organizations/chain";
 import { fetchVerifiedMetadata } from "../../lib/organizations/metadata";
 
 export const runtime = "nodejs";
