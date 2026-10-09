@@ -7,6 +7,10 @@ import {
 } from "@solana/kit";
 import { PROGRAM_ID, rpcCall } from "./organizations/chain";
 import type { ClusterMoniker } from "./solana-client";
+import { type Instruction, type TransactionSigner } from "@solana/kit";
+import { configPda } from "./organizations/chain";
+import { getResolveFraudFlagInstruction } from "../generated/aidtrace/instructions/resolveFraudFlag";
+import { FraudFlagResolution } from "../generated/aidtrace/types/fraudFlagResolution";
 
 const encoder = getAddressEncoder();
 const decoder = getAddressDecoder();
@@ -84,4 +88,17 @@ export async function fetchCanonicalFraudFlag(cluster: ClusterMoniker, subject: 
 
 export function isTrustSubject(value: string): value is Address {
   try { address(value); return true; } catch { return false; }
+}
+
+/** Generated instruction wrapped for the wallet transaction sender. */
+export async function resolveFraudFlagIx(flag: Address, admin: Address, resolution: "resolved" | "dismissed"): Promise<Instruction> {
+  const generated = getResolveFraudFlagInstruction({
+    config: await configPda(), fraudFlag: flag,
+    // The generated builder needs signer metadata. The app wallet sender
+    // supplies the actual signature later, so this placeholder is never used
+    // to sign locally.
+    admin: { address: admin, signTransactions: async () => { throw new Error("Wallet signs this transaction"); } } as unknown as TransactionSigner,
+    resolution: resolution === "resolved" ? FraudFlagResolution.Resolved : FraudFlagResolution.Dismissed,
+  });
+  return generated as Instruction;
 }

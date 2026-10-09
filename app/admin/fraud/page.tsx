@@ -59,6 +59,14 @@ export default function FraudDashboard() {
   >({});
   const [operationAddress, setOperationAddress] = useState("");
   const [operation, setOperation] = useState<TrustWriteStatus | null>(null);
+  const adminAuthorization = async (action: "review_finding" | "run_scoring", resourceId?: string) => {
+    if (!wallet?.signMessage || !walletAddress) throw new Error("Connected wallet must support message signing");
+    const response = await fetch("/api/admin/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet: walletAddress, action, ...(resourceId ? { resourceId } : {}) }) });
+    const challenge = await response.json(); if (!response.ok) throw new Error(challenge.error || "Could not authorize action");
+    const signed = await wallet.signMessage(new TextEncoder().encode(challenge.message));
+    if (new TextDecoder().decode(signed.message) !== challenge.message) throw new Error("Wallet returned a different signed message");
+    return { wallet: walletAddress, action, resourceId, nonce: challenge.nonce, message: challenge.message, signature: btoa(String.fromCharCode(...signed.signature)), cluster };
+  };
 
   const loadFindings = useCallback(async () => {
     if (!supported || adminState !== "allowed" || !roles.admin) return;
@@ -157,7 +165,7 @@ export default function FraudDashboard() {
         await fetch("/api/fraud/evaluations/run", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ cluster }),
+          body: JSON.stringify(await adminAuthorization("run_scoring")),
         })
       )) as { evaluations_created?: number; evaluations_reused?: number };
       setMessage(
@@ -198,7 +206,7 @@ export default function FraudDashboard() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            reviewer: walletAddress,
+            ...(await adminAuthorization("review_finding", finding.id)),
             disposition: reviewChoices[finding.id] || "needs_investigation",
             note: reviewNotes[finding.id] || "",
           }),

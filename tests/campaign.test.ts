@@ -19,6 +19,7 @@ import {
   recordDisbursementIx,
   type Allocation,
 } from "../app/lib/finance/chain";
+import { resolveFraudFlagIx } from "../app/lib/trust-chain";
 
 const org = address("11111111111111111111111111111111");
 const donor = address("Vote111111111111111111111111111111111111111");
@@ -84,6 +85,12 @@ test("admin disaster creation assigns the admin signer and canonical campaign PD
   assert.equal(create.accounts?.[3]?.address, await vaultPda(campaign));
   assert.equal(create.accounts?.[4]?.address, donor);
   assert.equal(create.accounts?.[4]?.role, AccountRole.WRITABLE_SIGNER);
+});
+test("canonical fraud flag resolutions require the admin signer", async () => {
+  const instruction = await resolveFraudFlagIx(org, donor, "resolved");
+  assert.equal(instruction.accounts?.[1]?.address, org);
+  assert.equal(instruction.accounts?.[2]?.address, donor);
+  assert.equal(instruction.accounts?.[2]?.role, AccountRole.READONLY_SIGNER);
 });
 test("allocation/disbursement PDAs and fund reservation instructions are deterministic", async () => {
   const campaign = await campaignPda(org, 0n);
