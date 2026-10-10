@@ -47,6 +47,10 @@ const shortError = (error: unknown, fallback: string) =>
   /signature|rejected/i.test(error instanceof Error ? error.message : "")
     ? "Wallet signature was rejected or expired."
     : fallback;
+const truncateWords = (value: string, limit = 5) => {
+  const words = value.trim().split(/\s+/);
+  return words.length > limit ? `${words.slice(0, limit).join(" ")}…` : value;
+};
 
 export default function OrganizationDisastersPage() {
   const router = useRouter();
@@ -179,7 +183,9 @@ export default function OrganizationDisastersPage() {
         header: "Disaster",
         cell: (c) => (
           <div>
-            <p className="font-semibold">{c.title}</p>
+            <p className="font-semibold" title={c.title}>
+              {truncateWords(c.title)}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {c.provider} ·{" "}
               {c.occurred_at
@@ -194,9 +200,9 @@ export default function OrganizationDisastersPage() {
         header: "Location / type",
         cell: (c) => (
           <div>
-            <p>{c.location}</p>
+            <p title={c.location}>{truncateWords(c.location)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {c.disaster_type}
+              {truncateWords(c.disaster_type)}
             </p>
           </div>
         ),
