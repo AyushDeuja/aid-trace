@@ -2,8 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Bell, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useViewerRole } from "../lib/hooks/use-viewer-role";
 import { primaryNavigation } from "../lib/navigation";
 import { useWallet } from "../lib/wallet/context";

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./components/providers";
 import { AppNavbar } from "./components/app-navbar";
+import { WorkspaceShell } from "./components/workspace-shell";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +32,7 @@ export default function RootLayout({
       <body suppressHydrationWarning className="antialiased">
         <Providers>
           <AppNavbar />
-          {children}
+          <WorkspaceShell>{children}</WorkspaceShell>
         </Providers>
       </body>
     </html>

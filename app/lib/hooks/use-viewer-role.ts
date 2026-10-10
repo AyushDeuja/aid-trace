@@ -16,6 +16,8 @@ export type ViewerRole = {
   loading: boolean;
 };
 
+export type Workspace = "public" | "donor" | "organization" | "admin";
+
 const publicRole: ViewerRole = {
   isAdmin: false,
   isOrganizationAuthority: false,
@@ -27,13 +29,15 @@ export function useViewerRole(): ViewerRole {
   const { cluster } = useCluster();
   const { wallet } = useWallet();
   const walletAddress = wallet?.account.address;
-  const [role, setRole] = useState<ViewerRole>(publicRole);
+  const [role, setRole] = useState<ViewerRole & { walletAddress?: string }>(
+    publicRole
+  );
 
   useEffect(() => {
     let active = true;
     const update = (next: ViewerRole) => {
       queueMicrotask(() => {
-        if (active) setRole(next);
+        if (active) setRole({ ...next, walletAddress });
       });
     };
     if (!walletAddress) {
@@ -67,5 +71,27 @@ export function useViewerRole(): ViewerRole {
     };
   }, [cluster, walletAddress]);
 
+  // A role result belongs only to the wallet that produced it. This avoids a
+  // brief donor/public render while a newly connected wallet is being checked.
+  if (walletAddress && role.walletAddress !== walletAddress) {
+    return { ...publicRole, loading: true };
+  }
+
   return role;
+}
+
+/** Admin takes precedence when one canonical wallet holds both roles. */
+export function resolveWorkspace({
+  isConnected,
+  isAdmin,
+  isOrganizationAuthority,
+}: {
+  isConnected: boolean;
+  isAdmin: boolean;
+  isOrganizationAuthority: boolean;
+}): Workspace {
+  if (!isConnected) return "public";
+  if (isAdmin) return "admin";
+  if (isOrganizationAuthority) return "organization";
+  return "donor";
 }
