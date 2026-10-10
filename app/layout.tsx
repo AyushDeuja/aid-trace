@@ -3,10 +3,6 @@ import "./globals.css";
 import { Providers } from "./components/providers";
 import { AppNavbar } from "./components/app-navbar";
 import { WorkspaceShell } from "./components/workspace-shell";
-import { Geist } from "next/font/google";
-import { cn } from "@/lib/utils";
-
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "AidTrace",
@@ -24,11 +20,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn("font-sans", geist.variable)}
-    >
+    <html lang="en" suppressHydrationWarning className="font-sans">
       <body suppressHydrationWarning className="antialiased">
         <Providers>
           <AppNavbar />

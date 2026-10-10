@@ -4,6 +4,7 @@ import { fetchOrganization } from "../../../lib/organizations/chain";
 import { fetchCampaign } from "../../../lib/campaigns/chain";
 import { fetchCanonicalFraudFlag } from "../../../lib/trust-chain";
 import { readMetadataDocument } from "../../../lib/metadata-documents";
+import { fetchFraud } from "../../../lib/fraud-service";
 import { address } from "@solana/kit";
 import { requireAdminChallenge } from "../../../lib/admin-auth";
 
@@ -118,14 +119,63 @@ export async function POST(request: NextRequest) {
         }
       })
     );
-    const requested = await db.query(
-      "SELECT id,title,location,disaster_type,status FROM disaster_candidates WHERE status='requested' ORDER BY updated_at DESC LIMIT 100"
-    );
+    const [requested, disasterHistory, fraudHistory, fraudHealth] =
+      await Promise.all([
+        db.query(
+          "SELECT id,title,location,disaster_type,status FROM disaster_candidates WHERE status='requested' ORDER BY updated_at DESC LIMIT 100"
+        ),
+        db
+          .query(
+            "SELECT h.id,h.action,h.actor,h.note,h.created_at,c.title FROM disaster_candidate_history h JOIN disaster_candidates c ON c.id=h.candidate_id ORDER BY h.created_at DESC LIMIT 20"
+          )
+          .catch(() => ({ rows: [] })),
+        db
+          .query(
+            "SELECT r.id,r.disposition,r.reviewer,r.note,r.created_at,f.subject_address FROM fraud_reviews r JOIN fraud_findings f ON f.id=r.finding_id WHERE f.cluster=$1 AND f.program_id=$2 ORDER BY r.created_at DESC LIMIT 20",
+            [cluster, programId]
+          )
+          .catch(() => ({ rows: [] })),
+        fetchFraud("/health"),
+      ]);
+    const unavailableReads = [...orgs, ...items].filter(
+      (item) => item && "unavailable" in item && item.unavailable
+    ).length;
     return new NextResponse(
       json({
         organizations: orgs.filter(Boolean),
         campaigns: items.filter(Boolean),
         disasters: requested.rows,
+        decisions: [
+          ...disasterHistory.rows.map((row) => ({
+            id: `disaster:${row.id}`,
+            kind: "disaster",
+            action: row.action,
+            actor: row.actor,
+            note: row.note,
+            title: row.title,
+            createdAt: row.created_at,
+          })),
+          ...fraudHistory.rows.map((row) => ({
+            id: `fraud:${row.id}`,
+            kind: "fraud",
+            action: row.disposition,
+            actor: row.reviewer,
+            note: row.note,
+            title: row.subject_address,
+            createdAt: row.created_at,
+          })),
+        ]
+          .sort(
+            (left, right) =>
+              new Date(right.createdAt).getTime() -
+              new Date(left.createdAt).getTime()
+          )
+          .slice(0, 20),
+        health: {
+          database: "available",
+          canonical: unavailableReads ? "degraded" : "available",
+          fraud: fraudHealth.ok ? "available" : "unavailable",
+        },
       }),
       { headers: { "content-type": "application/json" } }
     );
