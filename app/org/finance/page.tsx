@@ -3,6 +3,12 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { address, type Address, type Instruction } from "@solana/kit";
+import { ExternalLink, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
@@ -46,6 +52,9 @@ type EvidenceAttachment = {
 function sol(value: bigint) {
   return `${(Number(value) / Number(LAMPORTS)).toFixed(4)} SOL`;
 }
+function shortAddress(value: string) {
+  return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value;
+}
 function lamports(value: string) {
   if (!/^\d+(\.\d{0,9})?$/.test(value))
     throw new Error("Enter a valid SOL amount");
@@ -62,6 +71,8 @@ function FinancePageClient() {
   const walletAddress = wallet?.account.address;
   const searchParams = useSearchParams();
   const requestedOrganization = searchParams.get("organization");
+  const section =
+    searchParams.get("section") === "verification" ? "verification" : "funds";
   const supported = cluster === "localnet" || cluster === "devnet";
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<Campaign | null>(null);
@@ -92,6 +103,12 @@ function FinancePageClient() {
   const [message, setMessage] = useState("");
   const [stage, setStage] = useState("");
   const [signature, setSignature] = useState("");
+  const [fundTab, setFundTab] = useState<"allocations" | "disbursements">(
+    "allocations"
+  );
+  const [allocationModalOpen, setAllocationModalOpen] = useState(false);
+  const [disbursementAllocation, setDisbursementAllocation] =
+    useState<Allocation | null>(null);
 
   const refresh = useCallback(async () => {
     if (!supported || !walletAddress) return;
@@ -193,10 +210,14 @@ function FinancePageClient() {
       setSignature(next);
       if (after) await after(next);
       setStage("Confirmed on Solana");
+      toast.success("Transaction confirmed on Solana.");
       await refresh();
     } catch (error) {
       setStage("Failed");
-      setMessage(error instanceof Error ? error.message : String(error));
+      const nextMessage =
+        error instanceof Error ? error.message : String(error);
+      setMessage(nextMessage);
+      toast.error("Transaction could not be completed.");
     }
   };
   const metrics = useMemo(
@@ -235,7 +256,7 @@ function FinancePageClient() {
     const allocationId = selected.nextAllocationId;
     void transact(
       async () => {
-        const metadata = await fetch("/api/metadata", {
+        metadata = await fetch("/api/metadata", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -279,7 +300,7 @@ function FinancePageClient() {
     const disbursementId = allocation.nextDisbursementId;
     void transact(
       async () => {
-        const metadata = await fetch("/api/metadata", {
+        metadata = await fetch("/api/metadata", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -431,6 +452,784 @@ function FinancePageClient() {
       }
     );
   };
+  const allocationColumns: DataTableColumn<Allocation>[] = [
+    {
+      key: "allocation",
+      header: "Allocation",
+      cell: (item) => (
+        <div>
+          <p className="font-semibold">
+            Allocation #{item.allocationId.toString()}
+          </p>
+          <p
+            className="mt-1 font-mono text-xs text-muted-foreground"
+            title={item.address}
+          >
+            {shortAddress(item.address)}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "recipient",
+      header: "Recipient",
+      cell: (item) => (
+        <span className="font-mono text-xs" title={item.recipient}>
+          {shortAddress(item.recipient)}
+        </span>
+      ),
+    },
+    {
+      key: "funds",
+      header: "Reserved / remaining",
+      cell: (item) => (
+        <div className="text-sm">
+          <p>{sol(item.amount)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {sol(item.amount - item.spent)} remaining
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (item) => (
+        <Badge variant={item.status === "Open" ? "verified" : "outline"}>
+          {item.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (item) => (
+        <div data-table-action className="flex justify-end gap-2">
+          {indexed.get(item.address)?.uri && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.open(
+                  `/api/metadata?uri=${encodeURIComponent(indexed.get(item.address)!.uri)}`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              Metadata <ExternalLink />
+            </Button>
+          )}
+          {indexed.get(item.address)?.signature && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.open(
+                  getExplorerUrl(`/tx/${indexed.get(item.address)!.signature}`),
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              Transaction <ExternalLink />
+            </Button>
+          )}
+          {canManage && item.status === "Open" && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setDisbursementAllocation(item)}
+              >
+                Disburse
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isSending}
+                onClick={() =>
+                  void transact(() =>
+                    cancelAllocationIx(item, selected!, address(walletAddress!))
+                  )
+                }
+              >
+                Cancel
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+  const disbursementColumns: DataTableColumn<Disbursement>[] = [
+    {
+      key: "disbursement",
+      header: "Disbursement",
+      cell: (item) => (
+        <div>
+          <p className="font-semibold">
+            Disbursement #{item.disbursementId.toString()}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Allocation {shortAddress(item.allocation)}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "recipient",
+      header: "Recipient",
+      cell: (item) => (
+        <span className="font-mono text-xs" title={item.recipient}>
+          {shortAddress(item.recipient)}
+        </span>
+      ),
+    },
+    { key: "amount", header: "Amount", cell: (item) => sol(item.amount) },
+    {
+      key: "evidence",
+      header: "Evidence",
+      cell: (item) =>
+        evidenceFor(item.address) ? (
+          <Badge variant="verified">Digest linked</Badge>
+        ) : (
+          <Badge variant="warning">Missing</Badge>
+        ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (item) => (
+        <Badge
+          variant={
+            item.status === "Verified"
+              ? "verified"
+              : item.status === "Recorded"
+                ? "warning"
+                : "outline"
+          }
+        >
+          {item.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "links",
+      header: "Links",
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (item) => (
+        <div data-table-action className="flex justify-end gap-2">
+          {indexed.get(item.address)?.uri && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.open(
+                  `/api/metadata?uri=${encodeURIComponent(indexed.get(item.address)!.uri)}`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              Metadata <ExternalLink />
+            </Button>
+          )}
+          {indexed.get(item.address)?.signature && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.open(
+                  getExplorerUrl(`/tx/${indexed.get(item.address)!.signature}`),
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              Transaction <ExternalLink />
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+  return (
+    <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 lg:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-7">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-primary uppercase">
+            <span className="h-px w-5 bg-primary" /> Organization finance
+          </p>
+          <h1 className="mt-3 font-serif text-4xl font-semibold sm:text-5xl">
+            Funding and verification
+          </h1>
+          <p className="mt-3 text-muted-foreground">
+            Manage campaign reservations, recorded disbursements, and delivery
+            evidence.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!walletAddress}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw /> Refresh canonical data
+        </Button>
+      </header>
+      {!supported && (
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm"
+        >
+          Finance controls are available on localnet and Devnet.
+        </p>
+      )}
+      {stage && (
+        <p
+          role="status"
+          className="rounded-xl border border-border bg-card p-4 text-sm"
+        >
+          Transaction: <strong>{stage}</strong>
+          {signature && (
+            <>
+              {" "}
+              ·{" "}
+              <a
+                className="underline"
+                href={getExplorerUrl(`/tx/${signature}`)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View transaction
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      {message && (
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm"
+        >
+          {message}
+        </p>
+      )}
+      {!walletAddress && (
+        <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          Connect an organization authority or registered verifier wallet to use
+          finance tools.
+        </p>
+      )}
+      {walletAddress && !selected && (
+        <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          No campaigns owned by this wallet were found.
+        </p>
+      )}
+      {selected && (
+        <>
+          <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <label className="block max-w-2xl text-sm font-medium">
+              Campaign
+              <select
+                className="mt-2 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                value={selected.address}
+                onChange={(event) =>
+                  setSelected(
+                    campaigns.find(
+                      (campaign) => campaign.address === event.target.value
+                    ) || null
+                  )
+                }
+              >
+                {campaigns.map((campaign) => (
+                  <option key={campaign.address} value={campaign.address}>
+                    Campaign #{campaign.campaignId.toString()} ·{" "}
+                    {campaign.status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {metrics && (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {Object.entries(metrics).map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="border-l-2 border-primary bg-background px-4 py-3"
+                  >
+                    <p className="text-xs font-medium capitalize text-muted-foreground">
+                      {label}
+                    </p>
+                    <p className="mt-1 font-serif text-2xl font-semibold">
+                      {sol(value)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          <div
+            className="flex border-b border-border"
+            role="tablist"
+            aria-label="Finance sections"
+          >
+            <a
+              className={
+                section === "funds"
+                  ? "border-b-2 border-primary px-4 py-3 text-sm font-semibold text-primary"
+                  : "px-4 py-3 text-sm text-muted-foreground hover:text-foreground"
+              }
+              href={`/org/finance${requestedOrganization ? `?organization=${encodeURIComponent(requestedOrganization)}` : ""}`}
+            >
+              Allocation &amp; disbursement
+            </a>
+            <a
+              className={
+                section === "verification"
+                  ? "border-b-2 border-primary px-4 py-3 text-sm font-semibold text-primary"
+                  : "px-4 py-3 text-sm text-muted-foreground hover:text-foreground"
+              }
+              href={`/org/finance?section=verification${requestedOrganization ? `&organization=${encodeURIComponent(requestedOrganization)}` : ""}`}
+            >
+              Verification
+            </a>
+          </div>
+          {section === "funds" ? (
+            <section className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-serif text-2xl font-semibold">
+                    Allocation &amp; disbursement
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Reservations and payouts are confirmed directly on Solana.
+                  </p>
+                </div>
+                {canManage && (
+                  <Button
+                    type="button"
+                    onClick={() => setAllocationModalOpen(true)}
+                  >
+                    <Plus /> Reserve funds
+                  </Button>
+                )}
+              </div>
+              {!canManage && (
+                <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                  Only the active organization authority can reserve, disburse,
+                  or cancel campaign funds.
+                </p>
+              )}
+              <div
+                className="flex gap-2"
+                role="tablist"
+                aria-label="Funding records"
+              >
+                <Button
+                  type="button"
+                  variant={fundTab === "allocations" ? "default" : "outline"}
+                  onClick={() => setFundTab("allocations")}
+                >
+                  Allocations ({allocations.length})
+                </Button>
+                <Button
+                  type="button"
+                  variant={fundTab === "disbursements" ? "default" : "outline"}
+                  onClick={() => setFundTab("disbursements")}
+                >
+                  Disbursements ({disbursements.length})
+                </Button>
+              </div>
+              {fundTab === "allocations" ? (
+                <DataTable
+                  columns={allocationColumns}
+                  rows={allocations}
+                  rowKey={(item) => item.address}
+                  emptyMessage="No funds have been reserved for this campaign."
+                />
+              ) : (
+                <DataTable
+                  columns={disbursementColumns}
+                  rows={disbursements}
+                  rowKey={(item) => item.address}
+                  emptyMessage="No disbursements have been recorded for this campaign."
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                {history
+                  ? "Audit history is indexed from confirmed Solana data."
+                  : "Audit history is indexing; canonical campaign records remain available."}
+              </p>
+            </section>
+          ) : (
+            <section className="space-y-5">
+              <div>
+                <h2 className="font-serif text-2xl font-semibold">
+                  Delivery verification
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Evidence is digest-linked before a registered verifier makes a
+                  delivery decision.
+                </p>
+              </div>
+              {canManage && (
+                <section className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="size-5 text-primary" />
+                    <h3 className="font-semibold">Registered verifiers</h3>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Input
+                      className="min-w-60 flex-1"
+                      placeholder="Verifier wallet address"
+                      value={verifierWallet}
+                      onChange={(event) =>
+                        setVerifierWallet(event.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      disabled={isSending || !verifierWallet}
+                      onClick={registerVerifier}
+                    >
+                      Register verifier
+                    </Button>
+                  </div>
+                  <DataTable
+                    columns={[
+                      {
+                        key: "wallet",
+                        header: "Verifier",
+                        cell: (item: Verifier) => (
+                          <span className="font-mono text-xs">
+                            {item.verifier}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: "status",
+                        header: "Status",
+                        cell: (item: Verifier) => (
+                          <Badge variant={item.active ? "verified" : "outline"}>
+                            {item.active ? "Active" : "Revoked"}
+                          </Badge>
+                        ),
+                      },
+                      {
+                        key: "actions",
+                        header: "Actions",
+                        headerClassName: "text-right",
+                        className: "text-right",
+                        cell: (item: Verifier) =>
+                          item.active ? (
+                            <div data-table-action>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={isSending}
+                                onClick={() => revokeVerifier(item.verifier)}
+                              >
+                                Revoke
+                              </Button>
+                            </div>
+                          ) : null,
+                      },
+                    ]}
+                    rows={verifiers}
+                    rowKey={(item) => item.address}
+                    emptyMessage="No verifier is registered for this organization."
+                  />
+                </section>
+              )}
+              <DataTable
+                columns={[
+                  {
+                    key: "disbursement",
+                    header: "Disbursement",
+                    cell: (item: Disbursement) => (
+                      <div>
+                        <p className="font-semibold">
+                          #{item.disbursementId.toString()} · {sol(item.amount)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {shortAddress(item.recipient)}
+                        </p>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "evidence",
+                    header: "Evidence",
+                    cell: (item: Disbursement) =>
+                      evidenceFor(item.address) ? (
+                        <Badge variant="verified">Digest confirmed</Badge>
+                      ) : (
+                        <Badge variant="warning">Missing evidence</Badge>
+                      ),
+                  },
+                  {
+                    key: "milestones",
+                    header: "Decisions",
+                    cell: (item: Disbursement) => {
+                      const milestones = verifications[item.address] || [];
+                      return milestones.length ? (
+                        <div className="space-y-1 text-xs">
+                          {milestones.map((milestone) => (
+                            <p key={milestone.address}>
+                              {milestone.status} ·{" "}
+                              {shortAddress(milestone.verifier)}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        "No decision"
+                      );
+                    },
+                  },
+                  {
+                    key: "actions",
+                    header: "Actions",
+                    headerClassName: "text-right",
+                    className: "text-right",
+                    cell: (item: Disbursement) => {
+                      const attached = evidenceFor(item.address);
+                      return (
+                        <div
+                          data-table-action
+                          className="flex justify-end gap-2"
+                        >
+                          {canManage && (
+                            <label className="inline-flex cursor-pointer items-center rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium">
+                              {uploading === item.address
+                                ? "Uploading…"
+                                : "Upload evidence"}
+                              <input
+                                className="sr-only"
+                                type="file"
+                                accept="application/pdf,image/png,image/jpeg,image/webp"
+                                disabled={uploading === item.address}
+                                onChange={(event) => {
+                                  const file = event.currentTarget.files?.[0];
+                                  if (file) void uploadEvidence(item, file);
+                                }}
+                              />
+                            </label>
+                          )}
+                          {isVerifier && attached && (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => decide(item, "Verified")}
+                              >
+                                Verify
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => decide(item, "Disputed")}
+                              >
+                                Dispute
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => decide(item, "Rejected")}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                ]}
+                rows={disbursements}
+                rowKey={(item) => item.address}
+                emptyMessage="No disbursements are ready for verification."
+              />
+            </section>
+          )}
+        </>
+      )}
+      {allocationModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close reserve funds dialog"
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setAllocationModalOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reserve-funds-title"
+            className="relative z-10 w-full rounded-xl border border-border bg-card p-5 shadow-xl sm:p-6"
+            style={{ maxWidth: "28rem" }}
+          >
+            <h2
+              id="reserve-funds-title"
+              className="font-serif text-2xl font-semibold"
+            >
+              Reserve funds
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Create a canonical allocation for this campaign.
+            </p>
+            <div className="mt-5 space-y-3">
+              <label className="block text-sm font-medium">
+                Recipient wallet
+                <Input
+                  className="mt-1.5"
+                  value={recipient}
+                  onChange={(event) => setRecipient(event.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Amount in SOL
+                <Input
+                  className="mt-1.5"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Purpose
+                <Input
+                  className="mt-1.5"
+                  value={purpose}
+                  onChange={(event) => setPurpose(event.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Category
+                <Input
+                  className="mt-1.5"
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Description
+                <textarea
+                  className="mt-1.5 min-h-24 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAllocationModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  isSending ||
+                  !recipient ||
+                  !amount ||
+                  !purpose ||
+                  !category ||
+                  !description
+                }
+                onClick={createAllocation}
+              >
+                Reserve funds
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
+      {disbursementAllocation && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close disbursement dialog"
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setDisbursementAllocation(null)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="record-disbursement-title"
+            className="relative z-10 w-full rounded-xl border border-border bg-card p-5 shadow-xl sm:p-6"
+            style={{ maxWidth: "28rem" }}
+          >
+            <h2
+              id="record-disbursement-title"
+              className="font-serif text-2xl font-semibold"
+            >
+              Record disbursement
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Allocation #{disbursementAllocation.allocationId.toString()} ·{" "}
+              {sol(
+                disbursementAllocation.amount - disbursementAllocation.spent
+              )}{" "}
+              available.
+            </p>
+            <div className="mt-5 space-y-3">
+              <label className="block text-sm font-medium">
+                Payout amount in SOL
+                <Input
+                  className="mt-1.5"
+                  inputMode="decimal"
+                  value={payoutAmount}
+                  onChange={(event) => setPayoutAmount(event.target.value)}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Payout description
+                <textarea
+                  className="mt-1.5 min-h-24 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm"
+                  value={payoutDescription}
+                  onChange={(event) => setPayoutDescription(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDisbursementAllocation(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isSending || !payoutAmount || !payoutDescription}
+                onClick={() => {
+                  payout(disbursementAllocation);
+                  setDisbursementAllocation(null);
+                }}
+              >
+                Record disbursement
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+  /*
   return (
     <main className="mx-auto max-w-6xl space-y-7 px-5 py-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -894,6 +1693,7 @@ function FinancePageClient() {
       )}
     </main>
   );
+  */
 }
 
 export default function FinancePage() {

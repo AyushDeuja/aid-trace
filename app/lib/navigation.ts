@@ -4,7 +4,11 @@ export type NavigationRoles = {
   isOrganizationAuthority: boolean;
 };
 
-export type NavigationItem = { href: string; label: string };
+export type NavigationItem = {
+  href: string;
+  label: string;
+  financeSection?: "funds" | "verification";
+};
 
 export type WorkspaceNavigation = "donor" | "organization" | "admin";
 
@@ -15,7 +19,16 @@ export const workspaceNavigation: Record<
   donor: [{ href: "/dashboard", label: "My donations" }],
   organization: [
     { href: "/org", label: "Organization profile" },
-    { href: "/org/finance", label: "Finance & verification" },
+    {
+      href: "/org/finance",
+      label: "Allocation & disbursement",
+      financeSection: "funds",
+    },
+    {
+      href: "/org/finance?section=verification",
+      label: "Verification",
+      financeSection: "verification",
+    },
     { href: "/org/disasters", label: "Disaster opportunities" },
   ],
   admin: [
