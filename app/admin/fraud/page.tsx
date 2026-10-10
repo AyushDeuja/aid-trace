@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useCluster } from "../../components/cluster-context";
-import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
 import { fetchAdmin, fetchTrustAuthority } from "../../lib/organizations/chain";
 import {
@@ -259,7 +258,6 @@ export default function FraudDashboard() {
             Explainable, advisory risk indicators from finalized indexed data.
           </p>
         </div>
-        <WalletButton />
       </header>
       {!supported && (
         <p role="alert" className="rounded border p-4">

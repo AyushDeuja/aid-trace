@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./components/providers";
+import { AppNavbar } from "./components/app-navbar";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +29,10 @@ export default function RootLayout({
       className={cn("font-sans", geist.variable)}
     >
       <body suppressHydrationWarning className="antialiased">
-        <Providers>{children}</Providers>
+        <Providers>
+          <AppNavbar />
+          {children}
+        </Providers>
       </body>
     </html>
   );

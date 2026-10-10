@@ -3,7 +3,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { address, type Address, type Instruction } from "@solana/kit";
-import { WalletButton } from "../../components/wallet-button";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
@@ -441,7 +440,6 @@ function FinancePageClient() {
             Canonical Solana balances, allocations, and disbursements.
           </p>
         </div>
-        <WalletButton />
       </header>
       {!supported && (
         <p role="alert" className="rounded border p-4">

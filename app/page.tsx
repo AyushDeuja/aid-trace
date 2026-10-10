@@ -3,17 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ArrowRight,
-  Bell,
-  Database,
-  Menu,
-  Search,
-  Sparkles,
-} from "lucide-react";
-import { toast } from "sonner";
+import { ArrowRight, Database, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useCluster } from "./components/cluster-context";
 import { listCampaigns } from "./lib/campaigns/chain";
 import {
@@ -128,64 +119,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between px-4 md:px-7">
-          <Link href="/" className="flex items-center gap-2.5">
-            <Image
-              src="/aidtrace-logo.png"
-              alt="AidTrace"
-              width={38}
-              height={38}
-              className="size-9 object-contain"
-              priority
-            />
-            <span className="font-serif text-xl font-semibold">AidTrace</span>
-          </Link>
-          <nav className="hidden items-center gap-7 text-sm font-bold md:flex">
-            <Link href="/campaigns">Campaigns</Link>
-            <a href="#how-it-works">How it works</a>
-          </nav>
-          <div className="flex items-center gap-1.5">
-            <Badge variant="live" className="hidden lg:inline-flex">
-              {cluster} · live
-            </Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Search"
-              onClick={() =>
-                toast.info("Search campaigns, transactions and addresses")
-              }
-            >
-              <Search />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Notifications"
-              onClick={() => toast.info("3 updates in your audit feed")}
-            >
-              <Bell />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              asChild
-              className="hidden sm:inline-flex"
-            >
-              <Link href="/org">Organization view</Link>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              aria-label="Open menu"
-            >
-              <Menu />
-            </Button>
-          </div>
-        </div>
-      </header>
       <main>
         <section className="relative isolate min-h-[640px] overflow-hidden text-white">
           <Image

@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useCluster } from "../../components/cluster-context";
-import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
 import { fetchAdmin } from "../../lib/organizations/chain";
 import { fetchOrganization, rpcCall } from "../../lib/organizations/chain";
@@ -252,7 +251,6 @@ export default function DisasterReview() {
             metadata and asks the admin wallet to create an active campaign.
           </p>
         </div>
-        <WalletButton />
       </header>
       {!isAdmin && (
         <p role="alert" className="rounded border p-3">

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { address, type Address, type Instruction } from "@solana/kit";
-import { WalletButton } from "../components/wallet-button";
 import { useWallet } from "../lib/wallet/context";
 import { useCluster } from "../components/cluster-context";
 import { useSendTransaction } from "../lib/hooks/use-send-transaction";
@@ -164,7 +163,6 @@ export default function OrganizationPage() {
             Register, review, and manage canonical organization identity.
           </p>
         </div>
-        <WalletButton />
       </header>
       {!supported && (
         <p role="alert" className="rounded-lg border p-4">
