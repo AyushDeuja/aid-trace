@@ -3,15 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
-  Building2,
   Check,
   ChevronDown,
   Copy,
   ExternalLink,
-  HeartHandshake,
   LogOut,
-  ShieldCheck,
-  UserRound,
   WalletCards,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,8 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { resolveWorkspace, useViewerRole } from "../lib/hooks/use-viewer-role";
-import { donorView, publicView } from "../lib/navigation";
+import { useViewerRole } from "../lib/hooks/use-viewer-role";
 import { useBalance } from "../lib/hooks/use-balance";
 import { lamportsToSolString } from "../lib/lamports";
 import { ellipsify } from "../lib/explorer";
@@ -36,15 +31,10 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
   const { connectors, connect, disconnect, wallet, status, error } =
     useWallet();
   const { getExplorerUrl } = useCluster();
-  const { isAdmin, isOrganizationAuthority, loading } = useViewerRole();
+  const { isAdmin, loading } = useViewerRole();
   const [copied, setCopied] = useState(false);
   const address = wallet?.account.address;
   const balance = useBalance(address);
-  const workspace = resolveWorkspace({
-    isConnected: Boolean(wallet),
-    isAdmin,
-    isOrganizationAuthority,
-  });
 
   const copyAddress = async () => {
     if (!address) return;
@@ -81,7 +71,7 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
           ))}
           {status === "connecting" && (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              Connecting…
+              Connecting...
             </p>
           )}
           {error != null && (
@@ -141,45 +131,6 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
               <ExternalLink /> Open in explorer
             </a>
           </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Switch view</DropdownMenuLabel>
-        <DropdownMenuGroup>
-          <DropdownMenuItem asChild>
-            <Link href={publicView.href}>
-              <UserRound />
-              {publicView.label}
-            </Link>
-          </DropdownMenuItem>
-          {workspace === "donor" && !loading && (
-            <DropdownMenuItem asChild>
-              <Link href={donorView.href}>
-                <HeartHandshake />
-                {donorView.label}
-              </Link>
-            </DropdownMenuItem>
-          )}
-          {isOrganizationAuthority && !loading ? (
-            <DropdownMenuItem asChild>
-              <Link href="/org">
-                <Building2 />
-                Organization view
-              </Link>
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem disabled>
-              <Building2 />
-              Organization view {loading ? "(checking…)" : "(unavailable)"}
-            </DropdownMenuItem>
-          )}
-          {isAdmin && !loading && (
-            <DropdownMenuItem asChild>
-              <Link href="/admin/review">
-                <ShieldCheck />
-                Admin view
-              </Link>
-            </DropdownMenuItem>
-          )}
         </DropdownMenuGroup>
         {isAdmin && !loading && (
           <>
