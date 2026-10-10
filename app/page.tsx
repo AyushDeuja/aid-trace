@@ -6,73 +6,42 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Database, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCluster } from "./components/cluster-context";
-import { listCampaigns } from "./lib/campaigns/chain";
 import {
   CampaignCard,
   type LandingCampaign,
 } from "./components/landing/campaign-card";
+import { EmptyCampaigns } from "./components/landing/empty-campaigns";
 import { Eyebrow, LiveFundPath, Metric } from "./components/landing/primitives";
+import { listCampaigns } from "./lib/campaigns/chain";
 
-const fallbackCampaigns: LandingCampaign[] = [
-  {
-    id: "nepal-flood-2026",
-    title: "Monsoon lifelines for Karnali",
-    location: "Karnali Province, Nepal",
-    organization: "Himalayan Relief Network",
-    summary:
-      "Emergency food, clean water and temporary shelter for 3,200 families cut off by monsoon flooding.",
-    live: 842.7,
-    canonical: 841.9,
-    goal: 1200,
-    verified: 14,
-  },
-  {
-    id: "turkiye-rebuild",
-    title: "Safe homes, stronger neighborhoods",
-    location: "Hatay, Türkiye",
-    organization: "Open Shelter Collective",
-    summary:
-      "Structural inspections, repair materials and essential supplies for families returning home.",
-    live: 612.4,
-    canonical: 612.4,
-    goal: 900,
-    verified: 9,
-  },
-  {
-    id: "samar-water",
-    title: "Clean water after Typhoon Pilar",
-    location: "Eastern Samar, Philippines",
-    organization: "Coastline Mutual Aid",
-    summary:
-      "Water purification, storage and emergency shelter for coastal communities.",
-    live: 428.1,
-    canonical: 427.6,
-    goal: 650,
-    verified: 21,
-  },
-];
+type CampaignLoadState = "loading" | "ready" | "unavailable";
 
 export default function Home() {
   const { cluster } = useCluster();
-  const [campaigns, setCampaigns] =
-    useState<LandingCampaign[]>(fallbackCampaigns);
-  const [isFallback, setIsFallback] = useState(true);
+  const [campaigns, setCampaigns] = useState<LandingCampaign[]>([]);
+  const [loadState, setLoadState] = useState<CampaignLoadState>("loading");
+
   const loadCampaigns = useCallback(async () => {
-    if (cluster !== "devnet" && cluster !== "localnet") return;
+    if (cluster !== "devnet" && cluster !== "localnet") {
+      setCampaigns([]);
+      setLoadState("unavailable");
+      return;
+    }
+
+    setLoadState("loading");
     try {
       const chainCampaigns = await listCampaigns(cluster);
-      if (!chainCampaigns.length) return;
       const resolved = await Promise.all(
         chainCampaigns
           .filter((item) => item.status === "Active")
-          .slice(0, 3)
-          .map(async (item, index): Promise<LandingCampaign> => {
+          .map(async (item): Promise<LandingCampaign> => {
             let metadata: {
               title?: string;
               description?: string;
               location?: string;
               organization?: string;
             } = {};
+
             try {
               const response = await fetch(
                 `/api/campaigns/metadata?uri=${encodeURIComponent(item.metadataUri)}`
@@ -82,16 +51,16 @@ export default function Home() {
                 metadata = body.metadata ?? body;
               }
             } catch {
-              /* use public fallback labels */
+              // The canonical campaign remains usable if optional metadata is unavailable.
             }
-            const backup = fallbackCampaigns[index % fallbackCampaigns.length];
+
             return {
               id: item.campaignId.toString(),
               address: item.address,
               title: metadata.title || `Campaign #${item.campaignId}`,
-              location: metadata.location || backup.location,
+              location: metadata.location || "Location unavailable",
               organization:
-                metadata.organization || "Verified AidTrace organization",
+                metadata.organization || "Organization details unavailable",
               summary:
                 metadata.description ||
                 "Canonical campaign data is available on the selected Solana cluster.",
@@ -102,20 +71,47 @@ export default function Home() {
             };
           })
       );
-      if (resolved.length) {
-        setCampaigns(resolved);
-        setIsFallback(false);
-      }
+      setCampaigns(resolved);
+      setLoadState("ready");
     } catch {
-      setCampaigns(fallbackCampaigns);
-      setIsFallback(true);
+      setCampaigns([]);
+      setLoadState("unavailable");
     }
   }, [cluster]);
+
   useEffect(() => {
-    void loadCampaigns();
+    const timer = window.setTimeout(() => void loadCampaigns(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadCampaigns]);
+
   const featured = useMemo(() => campaigns.slice(0, 3), [campaigns]);
-  const primary = featured[0] || fallbackCampaigns[0];
+  const primary = featured[0];
+  const donationCount = campaigns.reduce(
+    (total, campaign) => total + campaign.verified,
+    0
+  );
+  const totalRaised = campaigns.reduce(
+    (total, campaign) => total + campaign.canonical,
+    0
+  );
+  const emptyState =
+    loadState === "loading"
+      ? {
+          title: "Loading canonical campaigns",
+          description:
+            "Reading active campaign data from the selected Solana cluster.",
+        }
+      : cluster !== "devnet" && cluster !== "localnet"
+        ? {
+            title: "Select Devnet or localnet",
+            description:
+              "Campaign records are currently available on the Devnet and localnet clusters.",
+          }
+        : {
+            title: "No active campaigns yet",
+            description:
+              "There are no active campaign records on the selected cluster, or the records are temporarily unavailable.",
+          };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -141,7 +137,8 @@ export default function Home() {
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/80">
                 Follow every donation from a protected campaign vault to
-                evidence-backed delivery—without taking anyone’s word for it.
+                evidence-backed delivery without taking anyone&apos;s word for
+                it.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button size="lg" asChild>
@@ -155,7 +152,7 @@ export default function Home() {
                   asChild
                   className="border-white/50 bg-white/5 text-white hover:bg-white/15 hover:text-white"
                 >
-                  <a href="#how-it-works">See how it works</a>
+                  <Link href="/how-it-works">See how it works</Link>
                 </Button>
               </div>
               <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/75">
@@ -169,38 +166,53 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            <LiveFundPath
-              live={primary.live.toFixed(1)}
-              canonical={primary.canonical.toFixed(1)}
-            />
+            {primary ? (
+              <LiveFundPath
+                live={primary.canonical.toFixed(1)}
+                canonical={primary.canonical.toFixed(1)}
+              />
+            ) : (
+              <div className="rounded-lg border border-white/20 bg-[#17130e]/85 p-6 text-white shadow-2xl backdrop-blur-md">
+                <p className="text-sm font-semibold">
+                  Campaign data unavailable
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-white/65">
+                  Select a supported cluster to view a canonical campaign total.
+                </p>
+              </div>
+            )}
           </div>
         </section>
+
         <section className="border-b bg-card">
           <div className="mx-auto grid max-w-[1400px] divide-y md:grid-cols-4 md:divide-x md:divide-y-0">
             <Metric
-              label="Confirmed donations"
-              value="2,148"
-              detail="Publicly auditable"
+              label="Recorded donations"
+              value={
+                loadState === "ready" ? donationCount.toLocaleString() : "--"
+              }
+              detail="Across active campaigns"
             />
             <Metric
               label="Active campaigns"
-              value={isFallback ? "12" : String(campaigns.length)}
-              detail={
-                isFallback ? "Across 8 regions" : "Loaded from selected cluster"
+              value={loadState === "ready" ? String(campaigns.length) : "--"}
+              detail="Loaded from selected cluster"
+            />
+            <Metric
+              label="Campaign funds raised"
+              value={
+                loadState === "ready" ? `${totalRaised.toFixed(1)} SOL` : "--"
               }
+              detail="Canonical Solana totals"
             />
             <Metric
-              label="Verified deliveries"
-              value="184"
-              detail="Evidence attached"
-            />
-            <Metric
-              label="Funds traced"
-              value="94.7%"
-              detail="Donation to delivery"
+              label="Selected network"
+              value={cluster}
+              detail="Change it in the navigation"
             />
           </div>
         </section>
+
         <section className="mx-auto max-w-[1400px] px-5 py-20 md:px-8">
           <div className="mb-8 flex items-end justify-between gap-5">
             <div>
@@ -215,17 +227,22 @@ export default function Home() {
               </Link>
             </Button>
           </div>
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {featured.map((campaign) => (
-              <CampaignCard key={campaign.id} campaign={campaign} />
-            ))}
-          </div>
-          <p className="mt-5 text-xs text-muted-foreground">
-            {isFallback
-              ? "Showing verified public fallback records while canonical campaign data is unavailable."
-              : "Campaign totals above are loaded from the selected Solana cluster."}
-          </p>
+          {featured.length ? (
+            <>
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {featured.map((campaign) => (
+                  <CampaignCard key={campaign.id} campaign={campaign} />
+                ))}
+              </div>
+              <p className="mt-5 text-xs text-muted-foreground">
+                Showing active campaign data from the selected Solana cluster.
+              </p>
+            </>
+          ) : (
+            <EmptyCampaigns {...emptyState} />
+          )}
         </section>
+
         <section
           id="how-it-works"
           className="bg-primary text-primary-foreground"
@@ -258,12 +275,12 @@ export default function Home() {
           <div>
             <p className="font-serif text-xl">AidTrace</p>
             <p className="mt-2 text-sm text-white/60">
-              A frontend demonstration using sample Devnet activity.
+              Transparent disaster-relief funding on Solana.
             </p>
           </div>
           <div className="flex gap-5 text-sm">
             <Link href="/campaigns">Campaigns</Link>
-            <a href="#how-it-works">How it works</a>
+            <Link href="/how-it-works">How it works</Link>
             <Link href="/org">Organization view</Link>
           </div>
         </div>
