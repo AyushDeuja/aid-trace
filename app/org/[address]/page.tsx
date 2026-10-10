@@ -242,6 +242,13 @@ export default function OrganizationDetailPage() {
           />
         </dl>
         <div className="mt-5 flex flex-wrap gap-3">
+          <Button asChild variant="outline">
+            <Link
+              href={`/org/finance?organization=${encodeURIComponent(organization.address)}`}
+            >
+              Open finance & verification
+            </Link>
+          </Button>
           <a
             className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-sm font-medium hover:bg-muted"
             target="_blank"

@@ -16,6 +16,8 @@ export async function POST(request: NextRequest) {
         "record_draft",
         "record_submission",
         "record_active_campaign",
+        "view_admin_detail",
+        "view_organization_detail",
       ].includes(b.action) ||
       (b.candidateId !== undefined && typeof b.candidateId !== "string")
     )

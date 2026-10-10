@@ -1,15 +1,33 @@
 "use client";
+
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { address } from "@solana/kit";
+import { Check, RefreshCw, X } from "lucide-react";
+import { toast } from "sonner";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
-import { fetchAdmin } from "../../lib/organizations/chain";
-import { fetchOrganization, rpcCall } from "../../lib/organizations/chain";
+import {
+  fetchAdmin,
+  fetchOrganization,
+  rpcCall,
+} from "../../lib/organizations/chain";
 import {
   campaignPda,
   createAdminDisasterCampaignIx,
 } from "../../lib/campaigns/chain";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
-import { address } from "@solana/kit";
+import { ellipsify } from "../../lib/explorer";
 
 type Candidate = {
   id: string;
@@ -27,18 +45,25 @@ type Candidate = {
   campaign_address?: string;
 };
 const b64 = (data: Uint8Array) => btoa(String.fromCharCode(...data));
+const shortError = (error: unknown, fallback: string) =>
+  /signature|rejected/i.test(error instanceof Error ? error.message : "")
+    ? "Wallet signature was rejected or expired."
+    : fallback;
+
 export default function DisasterReview() {
+  const router = useRouter();
   const { cluster } = useCluster();
   const { wallet } = useWallet();
   const { send, isSending } = useSendTransaction();
   const [items, setItems] = useState<Candidate[]>([]);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [stage, setStage] = useState("");
+  const [rejecting, setRejecting] = useState<Candidate | null>(null);
+  const [note, setNote] = useState("");
   const signedPayload = async (action: string, candidateId?: string) => {
     if (!wallet?.signMessage)
       throw new Error("Connected wallet must support message signing");
-    const challengeResponse = await fetch("/api/disasters/challenge", {
+    const response = await fetch("/api/disasters/challenge", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -47,11 +72,9 @@ export default function DisasterReview() {
         ...(candidateId ? { candidateId } : {}),
       }),
     });
-    const challenge = await challengeResponse.json();
-    if (!challengeResponse.ok)
-      throw new Error(
-        challenge.error || "Could not create authorization challenge"
-      );
+    const challenge = await response.json();
+    if (!response.ok)
+      throw new Error(challenge.error || "Could not authorize this action");
     const signed = await wallet.signMessage(
       new TextEncoder().encode(challenge.message)
     );
@@ -67,6 +90,8 @@ export default function DisasterReview() {
     };
   };
   const load = useCallback(async () => {
+    if (!wallet?.account.address) return;
+    setLoading(true);
     try {
       const payload = await signedPayload("list_admin");
       const response = await fetch("/api/disasters/list", {
@@ -78,57 +103,39 @@ export default function DisasterReview() {
       if (!response.ok)
         throw new Error(body.error || "Could not load candidates");
       setItems(body);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load candidates");
+    } catch (error) {
+      toast.error(
+        shortError(
+          error,
+          "Disaster candidates are unavailable. Please refresh."
+        )
+      );
+    } finally {
+      setLoading(false);
     }
-    // signedPayload intentionally follows the active wallet and cluster.
+    // Wallet and cluster are captured by signedPayload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet, cluster]);
   useEffect(() => {
-    let current = true;
+    let live = true;
     if (!wallet?.account.address) {
-      const timer = window.setTimeout(() => {
-        if (current) setIsAdmin(false);
-      }, 0);
-      return () => {
-        current = false;
-        window.clearTimeout(timer);
-      };
-    }
-    void fetchAdmin(cluster)
-      .then((admin) => {
-        if (current) setIsAdmin(admin === wallet.account.address);
-      })
-      .catch(() => {
-        if (current) setIsAdmin(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [wallet?.account.address, cluster]);
-  const decide = async (c: Candidate, action: "approve" | "reject") => {
-    if (!wallet?.signMessage) {
-      setError("Connected wallet must support message signing");
+      queueMicrotask(() => live && setIsAdmin(false));
       return;
     }
-    try {
-      const authorization = await signedPayload(action, c.id);
-      const note =
-        action === "reject" ? prompt("Rejection note") || "" : undefined;
-      const response = await fetch(`/api/disasters/${c.id}/review`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, ...authorization, note }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Review failed");
-      if (action === "approve") await createActiveCampaign(c, body);
-      await load();
-    } catch (cause) {
-      setStage("Failed");
-      setError(cause instanceof Error ? cause.message : "Review failed");
+    void fetchAdmin(cluster)
+      .then((admin) => live && setIsAdmin(admin === wallet.account.address))
+      .catch(() => live && setIsAdmin(false));
+    return () => {
+      live = false;
+    };
+  }, [wallet?.account.address, cluster]);
+  useEffect(() => {
+    if (isAdmin) {
+      const timer = window.setTimeout(() => void load(), 0);
+      return () => window.clearTimeout(timer);
     }
-  };
+  }, [isAdmin, load]);
+
   const createActiveCampaign = async (
     candidate: Candidate,
     approval: {
@@ -145,30 +152,30 @@ export default function DisasterReview() {
       cluster,
       address(approval.organization)
     );
-    if (!organization)
-      throw new Error("Organization is unavailable on the selected cluster");
-    if (organization.status !== "Active" || !organization.verified) {
+    if (
+      !organization ||
+      organization.status !== "Active" ||
+      !organization.verified
+    )
       throw new Error(
-        `The linked organization ${organization.address} cannot create a disaster campaign yet: ` +
-          `status is ${organization.status} and verification is ${organization.verified ? "complete" : "required"}. ` +
-          "A GlobalConfig admin must verify it and set it to Active in /org before retrying."
+        "The linked organization must be verified and active first."
       );
-    }
-    setStage("Awaiting wallet approval to create the active disaster campaign");
-    const ix = await createAdminDisasterCampaignIx(
-      organization.address,
-      address(wallet.account.address),
-      organization.nextCampaignId,
-      BigInt(approval.goalLamports),
-      approval.endsAt
-        ? BigInt(Math.floor(new Date(approval.endsAt).getTime() / 1000))
-        : null,
-      approval.digest,
-      approval.uri
-    );
-    const signature = await send({ instructions: [ix] });
-    setStage("Confirming active campaign");
-    for (let attempt = 0; attempt < 30; attempt++) {
+    const signature = await send({
+      instructions: [
+        await createAdminDisasterCampaignIx(
+          organization.address,
+          address(wallet.account.address),
+          organization.nextCampaignId,
+          BigInt(approval.goalLamports),
+          approval.endsAt
+            ? BigInt(Math.floor(new Date(approval.endsAt).getTime() / 1000))
+            : null,
+          approval.digest,
+          approval.uri
+        ),
+      ],
+    });
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const result = await rpcCall<{
         value: Array<{ err: unknown; confirmationStatus: string } | null>;
       }>(cluster, "getSignatureStatuses", [
@@ -183,8 +190,7 @@ export default function DisasterReview() {
         )
       )
         break;
-      if (attempt === 29)
-        throw new Error("Campaign transaction confirmation timed out");
+      if (attempt === 29) throw new Error("Campaign confirmation timed out");
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     const campaignAddress = await campaignPda(
@@ -199,22 +205,58 @@ export default function DisasterReview() {
         ...record,
         organization: approval.organization,
         phase: "active_created",
-        // Keep the signed-message authorization in `record.signature`.
-        // The Solana transaction signature is evidence of the campaign
-        // creation and must not replace it.
         campaignSignature: signature,
         campaignAddress,
       }),
     });
-    const recordedBody = await recorded.json();
+    const body = await recorded.json();
     if (!recorded.ok)
       throw new Error(
-        recordedBody.error ||
+        body.error ||
           "Campaign was created but could not be linked to the request"
       );
-    setStage(`Active campaign created: ${campaignAddress}`);
   };
-  const retryActiveCampaign = async (candidate: Candidate) => {
+  const decide = async (candidate: Candidate, action: "approve" | "reject") => {
+    const id = toast.loading(
+      action === "approve" ? "Authorizing approval…" : "Authorizing rejection…"
+    );
+    try {
+      const authorization = await signedPayload(action, candidate.id);
+      const response = await fetch(`/api/disasters/${candidate.id}/review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action,
+          ...authorization,
+          ...(action === "reject" ? { note } : {}),
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Review failed");
+      if (action === "approve") {
+        toast.loading(
+          "Awaiting wallet approval to create the active campaign…",
+          { id }
+        );
+        await createActiveCampaign(candidate, body);
+      }
+      toast.success(
+        action === "approve"
+          ? "Active disaster campaign created."
+          : "Request rejected.",
+        { id }
+      );
+      setRejecting(null);
+      setNote("");
+      await load();
+    } catch (error) {
+      toast.error(
+        shortError(error, "Review could not be completed. Please try again."),
+        { id }
+      );
+    }
+  };
+  const retry = async (candidate: Candidate) => {
     if (
       !candidate.organization_address ||
       !candidate.proposal ||
@@ -222,8 +264,10 @@ export default function DisasterReview() {
       !candidate.metadata_digest
     )
       return;
+    const id = toast.loading(
+      "Awaiting wallet approval to create the active campaign…"
+    );
     try {
-      setError("");
       await createActiveCampaign(candidate, {
         organization: candidate.organization_address,
         goalLamports: candidate.proposal.goalLamports,
@@ -231,98 +275,197 @@ export default function DisasterReview() {
         digest: candidate.metadata_digest,
         endsAt: candidate.proposal.endsAt,
       });
+      toast.success("Active disaster campaign created.", { id });
       await load();
-    } catch (cause) {
-      setStage("Failed");
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not create the active campaign"
+    } catch (error) {
+      toast.error(
+        shortError(error, "Campaign creation could not be completed."),
+        { id }
       );
     }
   };
-  return (
-    <main className="mx-auto max-w-5xl space-y-5 px-5 py-10">
-      <header className="flex justify-between">
+  const columns: DataTableColumn<Candidate>[] = [
+    {
+      key: "disaster",
+      header: "Disaster",
+      cell: (c) => (
         <div>
-          <h1 className="text-3xl font-semibold">Disaster candidates</h1>
-          <p className="text-sm text-muted">
-            Approving a verified organization request prepares canonical
-            metadata and asks the admin wallet to create an active campaign.
+          <p className="font-semibold">{c.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {c.provider} ·{" "}
+            {c.occurred_at
+              ? new Date(c.occurred_at).toLocaleDateString()
+              : "Time unavailable"}
           </p>
         </div>
-      </header>
-      {!isAdmin && (
-        <p role="alert" className="rounded border p-3">
-          Connect the GlobalConfig admin wallet to view disaster requests.
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="rounded border p-3">
-          {error}
-        </p>
-      )}
-      {stage && <p role="status">{stage}</p>}
-      <button
-        disabled={!isAdmin}
-        className="rounded border px-3 py-2 disabled:opacity-50"
-        onClick={() => void load()}
-      >
-        Refresh
-      </button>
-      {items.map((c) => (
-        <article className="space-y-2 rounded-xl border p-4" key={c.id}>
-          <h2 className="font-semibold">{c.title}</h2>
-          <p>
-            {c.disaster_type} · {c.location} · {c.status}
+      ),
+    },
+    {
+      key: "impact",
+      header: "Location / type",
+      cell: (c) => (
+        <div>
+          <p>{c.location}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {c.disaster_type}
           </p>
-          <p className="text-sm text-muted">
-            {c.provider} · {c.occurred_at || "time unavailable"}
-          </p>
-          {c.observations.map((o, i) => (
-            <a
-              className="block break-all text-sm underline"
-              href={o.source_url}
-              key={i}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Source: {o.provider}
-            </a>
-          ))}
-          {c.status === "requested" && isAdmin && (
-            <div className="flex gap-2">
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (c) => (
+        <Badge
+          variant={
+            c.status === "activated"
+              ? "verified"
+              : c.status === "rejected"
+                ? "outline"
+                : "warning"
+          }
+        >
+          {c.status.replaceAll("_", " ")}
+        </Badge>
+      ),
+    },
+    {
+      key: "organization",
+      header: "Organization",
+      cell: (c) =>
+        c.organization_address ? (
+          <span className="font-mono text-xs">
+            {ellipsify(c.organization_address, 6)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">No request</span>
+        ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (c) => (
+        <div
+          className="flex justify-end gap-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {c.status === "requested" && (
+            <>
+              <Button
+                size="sm"
                 disabled={isSending}
                 onClick={() => void decide(c, "approve")}
               >
-                Approve organization request
-              </button>
-              <button
-                className="rounded border px-3 py-2"
-                onClick={() => void decide(c, "reject")}
+                <Check /> Approve & create
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setRejecting(c)}
               >
-                Reject
-              </button>
-            </div>
+                <X /> Reject
+              </Button>
+            </>
           )}
-          {c.status === "approved" &&
-            isAdmin &&
-            c.organization_address &&
-            c.proposal &&
-            c.metadata_uri &&
-            c.metadata_digest && (
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
-                disabled={isSending}
-                onClick={() => void retryActiveCampaign(c)}
-              >
-                Create active campaign
-              </button>
-            )}
-        </article>
-      ))}
+          {c.status === "approved" && (
+            <Button
+              size="sm"
+              disabled={isSending}
+              onClick={() => void retry(c)}
+            >
+              Create active campaign
+            </Button>
+          )}
+          {c.status === "activated" && c.campaign_address && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => router.push(`/campaigns/${c.campaign_address}`)}
+            >
+              Open campaign
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+  return (
+    <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 lg:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-7">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-primary uppercase">
+            <span className="h-px w-5 bg-primary" /> Admin
+          </p>
+          <h1 className="mt-3 font-serif text-4xl font-semibold sm:text-5xl">
+            Disaster candidates
+          </h1>
+          <p className="mt-3 text-muted-foreground">
+            Review signed organization requests and create active canonical
+            relief campaigns.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          disabled={!isAdmin || loading}
+          onClick={() =>
+            void load().catch(() =>
+              toast.error("Could not refresh candidates.")
+            )
+          }
+        >
+          <RefreshCw className={loading ? "animate-spin" : ""} /> Signed refresh
+        </Button>
+      </header>
+      {!isAdmin ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          Connect the canonical GlobalConfig admin wallet to review disaster
+          requests.
+        </p>
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={items}
+          rowKey={(c) => c.id}
+          loading={loading}
+          onRowClick={(c) => router.push(`/admin/disasters/${c.id}`)}
+          emptyMessage="No disaster candidates are available on this cluster."
+        />
+      )}
+      <Dialog
+        open={Boolean(rejecting)}
+        onOpenChange={(open) => !open && setRejecting(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject organization request</DialogTitle>
+            <DialogDescription>
+              A short reviewer note is required and preserved with the candidate
+              history.
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            className="mt-5 min-h-28 w-full rounded-lg border border-input bg-transparent p-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            maxLength={1000}
+            placeholder="Explain why this request is rejected"
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRejecting(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!note.trim() || isSending}
+              onClick={() => rejecting && void decide(rejecting, "reject")}
+            >
+              Reject request
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

@@ -1,10 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
 import { organizationPda } from "../../lib/organizations/chain";
-import { displaySol } from "../../lib/campaigns/amount";
+import { displaySol, parseSolAmount } from "../../lib/campaigns/amount";
 
 type Proposal = {
   title: string;
@@ -20,6 +34,7 @@ type Candidate = {
   title: string;
   location: string;
   disaster_type: string;
+  provider: string;
   occurred_at: string | null;
   observations: { provider: string; source_url: string }[];
   proposal?: Proposal;
@@ -28,33 +43,34 @@ type Candidate = {
   campaign_address?: string | null;
 };
 const b64 = (data: Uint8Array) => btoa(String.fromCharCode(...data));
+const shortError = (error: unknown, fallback: string) =>
+  /signature|rejected/i.test(error instanceof Error ? error.message : "")
+    ? "Wallet signature was rejected or expired."
+    : fallback;
 
 export default function OrganizationDisastersPage() {
+  const router = useRouter();
   const { cluster } = useCluster();
   const { wallet } = useWallet();
   const [organization, setOrganization] = useState("");
   const [items, setItems] = useState<Candidate[]>([]);
-  const [goals, setGoals] = useState<Record<string, string>>({});
-  const [error, setError] = useState("");
-
+  const [loading, setLoading] = useState(false);
+  const [requesting, setRequesting] = useState<Candidate | null>(null);
+  const [goalSol, setGoalSol] = useState("");
   useEffect(() => {
     if (!wallet?.account.address) {
-      const timer = window.setTimeout(() => setOrganization(""), 0);
-      return () => window.clearTimeout(timer);
+      queueMicrotask(() => setOrganization(""));
+      return;
     }
-    void organizationPda(wallet.account.address).then((value) =>
-      setOrganization(value)
-    );
+    void organizationPda(wallet.account.address).then(setOrganization);
   }, [wallet?.account.address]);
-
   const authorize = async (
     action: "list_organization" | "request_campaign",
     candidateId?: string
   ) => {
-    if (!wallet?.signMessage)
-      throw new Error("Connected wallet must support message signing");
-    if (!organization) throw new Error("Enter the organization address first");
-    const challengeResponse = await fetch("/api/disasters/challenge", {
+    if (!wallet?.signMessage || !organization)
+      throw new Error("Connect the organization authority wallet first");
+    const response = await fetch("/api/disasters/challenge", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -63,11 +79,9 @@ export default function OrganizationDisastersPage() {
         ...(candidateId ? { candidateId } : {}),
       }),
     });
-    const challenge = await challengeResponse.json();
-    if (!challengeResponse.ok)
-      throw new Error(
-        challenge.error || "Could not create authorization challenge"
-      );
+    const challenge = await response.json();
+    if (!response.ok)
+      throw new Error(challenge.error || "Could not authorize this action");
     const signed = await wallet.signMessage(
       new TextEncoder().encode(challenge.message)
     );
@@ -84,6 +98,8 @@ export default function OrganizationDisastersPage() {
     };
   };
   const load = useCallback(async () => {
+    if (!organization) return;
+    setLoading(true);
     try {
       const auth = await authorize("list_organization");
       const response = await fetch("/api/disasters/list", {
@@ -95,28 +111,49 @@ export default function OrganizationDisastersPage() {
       if (!response.ok)
         throw new Error(body.error || "Could not load candidates");
       setItems(body);
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Could not load candidates"
+    } catch (error) {
+      toast.error(
+        shortError(
+          error,
+          "Disaster opportunities are unavailable. Please refresh."
+        )
       );
+    } finally {
+      setLoading(false);
     }
-    // Authorization follows the active wallet and explicit organization selection.
+    // Signed authorization follows the active wallet, selected organization, and cluster.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet, cluster, organization]);
-  const requestCampaign = async (candidate: Candidate) => {
+  useEffect(() => {
+    if (organization) {
+      const timer = window.setTimeout(() => void load(), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [organization, load]);
+  const requestCampaign = async () => {
+    if (!requesting) return;
+    let parsed: bigint;
     try {
-      const auth = await authorize("request_campaign", candidate.id);
-      const goalSol = goals[candidate.id] || "";
-      const response = await fetch(`/api/disasters/${candidate.id}/request`, {
+      parsed = parseSolAmount(goalSol);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Enter a valid SOL goal."
+      );
+      return;
+    }
+    const id = toast.loading("Awaiting request signature…");
+    try {
+      const auth = await authorize("request_campaign", requesting.id);
+      const response = await fetch(`/api/disasters/${requesting.id}/request`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...auth,
           proposal: {
-            title: candidate.title,
-            description: `Relief campaign requested by the organization for ${candidate.title}.`,
-            disasterType: candidate.disaster_type,
-            location: candidate.location,
+            title: requesting.title,
+            description: `Relief campaign requested by the organization for ${requesting.title}.`,
+            disasterType: requesting.disaster_type,
+            location: requesting.location,
             goalSol,
             endsAt: null,
           },
@@ -125,118 +162,185 @@ export default function OrganizationDisastersPage() {
       const body = await response.json();
       if (!response.ok)
         throw new Error(body.error || "Could not request campaign");
+      toast.success(`Request submitted for ${displaySol(parsed)} SOL.`, { id });
+      setRequesting(null);
+      setGoalSol("");
       await load();
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Could not request campaign"
-      );
+    } catch (error) {
+      toast.error(shortError(error, "Could not submit the campaign request."), {
+        id,
+      });
     }
   };
+  const columns: DataTableColumn<Candidate>[] = useMemo(
+    () => [
+      {
+        key: "disaster",
+        header: "Disaster",
+        cell: (c) => (
+          <div>
+            <p className="font-semibold">{c.title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {c.provider} ·{" "}
+              {c.occurred_at
+                ? new Date(c.occurred_at).toLocaleDateString()
+                : "Time unavailable"}
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: "impact",
+        header: "Location / type",
+        cell: (c) => (
+          <div>
+            <p>{c.location}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {c.disaster_type}
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: "status",
+        header: "Request status",
+        cell: (c) => (
+          <Badge
+            variant={
+              c.status === "activated"
+                ? "verified"
+                : c.status === "rejected"
+                  ? "outline"
+                  : "warning"
+            }
+          >
+            {c.status.replaceAll("_", " ")}
+          </Badge>
+        ),
+      },
+      {
+        key: "goal",
+        header: "Goal",
+        cell: (c) =>
+          c.proposal?.goalLamports ? (
+            <span>{displaySol(BigInt(c.proposal.goalLamports))} SOL</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        headerClassName: "text-right",
+        className: "text-right",
+        cell: (c) => (
+          <div
+            className="flex justify-end gap-2"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {c.status === "detected" && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setRequesting(c);
+                  setGoalSol("");
+                }}
+              >
+                Request approval
+              </Button>
+            )}
+            {c.status === "activated" && c.campaign_address && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push(`/campaigns/${c.campaign_address}`)}
+              >
+                Open campaign <ExternalLink />
+              </Button>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [router]
+  );
   return (
-    <main className="mx-auto max-w-5xl space-y-5 px-5 py-10">
-      <header className="flex items-center justify-between gap-4">
+    <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 lg:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-7">
         <div>
-          <h1 className="text-3xl font-semibold">Disaster opportunities</h1>
-          <p className="text-sm text-muted">
-            Organization authorities submit a campaign request; admin approval
-            creates the active canonical campaign.
+          <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-primary uppercase">
+            <span className="h-px w-5 bg-primary" /> Organization workspace
+          </p>
+          <h1 className="mt-3 font-serif text-4xl font-semibold sm:text-5xl">
+            Disaster opportunities
+          </h1>
+          <p className="mt-3 text-muted-foreground">
+            Request a review for eligible disasters. Admin approval creates the
+            active canonical campaign.
           </p>
         </div>
+        <Button
+          variant="outline"
+          disabled={!organization || loading}
+          onClick={() =>
+            void load().catch(() =>
+              toast.error("Could not refresh opportunities.")
+            )
+          }
+        >
+          <RefreshCw className={loading ? "animate-spin" : ""} /> Signed refresh
+        </Button>
       </header>
-      {error && (
-        <p role="alert" className="rounded border p-3">
-          {error}
+      {!wallet?.account.address ? (
+        <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          Connect an organization authority wallet to view disaster
+          opportunities.
         </p>
-      )}
-      <label className="block text-sm">
-        Organization address
-        <input
-          className="mt-1 w-full rounded border p-2 font-mono"
-          value={organization}
-          onChange={(event) => setOrganization(event.target.value)}
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={items}
+          rowKey={(c) => c.id}
+          loading={loading}
+          onRowClick={(c) => router.push(`/org/disasters/${c.id}`)}
+          emptyMessage="No eligible disaster opportunities are available on this cluster."
         />
-      </label>
-      <button
-        className="rounded border px-3 py-2"
-        disabled={!wallet || !organization}
-        onClick={() => void load()}
+      )}
+      <Dialog
+        open={Boolean(requesting)}
+        onOpenChange={(open) => !open && setRequesting(null)}
       >
-        Sign to view candidates
-      </button>
-      {items.map((candidate) => (
-        <article className="space-y-2 rounded-xl border p-4" key={candidate.id}>
-          <h2 className="font-semibold">{candidate.title}</h2>
-          <p>
-            {candidate.disaster_type} · {candidate.location} ·{" "}
-            {candidate.status}
-          </p>
-          {candidate.observations.map((observation, index) => (
-            <a
-              className="block text-sm underline"
-              href={observation.source_url}
-              key={index}
-              target="_blank"
-              rel="noreferrer"
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request admin approval</DialogTitle>
+            <DialogDescription>
+              {requesting?.title}. Enter the campaign target in SOL; the server
+              converts it exactly to lamports.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="mt-5 block text-sm font-medium">
+            Goal in SOL
+            <Input
+              className="mt-1.5"
+              inputMode="decimal"
+              placeholder="10"
+              value={goalSol}
+              onChange={(event) => setGoalSol(event.target.value)}
+            />
+          </label>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRequesting(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!goalSol.trim()}
+              onClick={() => void requestCampaign()}
             >
-              Source: {observation.provider}
-            </a>
-          ))}
-          {candidate.campaign_address && (
-            <a
-              className="block text-sm underline"
-              href={`/campaigns/${candidate.campaign_address}`}
-            >
-              Open active canonical campaign
-            </a>
-          )}
-          {candidate.status === "detected" && (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-sm">
-                Goal in SOL
-                <input
-                  className="mt-1 block rounded border p-2"
-                  inputMode="decimal"
-                  placeholder="10"
-                  value={goals[candidate.id] || ""}
-                  onChange={(event) =>
-                    setGoals((current) => ({
-                      ...current,
-                      [candidate.id]: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <button
-                className="rounded border px-3 py-2"
-                disabled={!goals[candidate.id]}
-                onClick={() => void requestCampaign(candidate)}
-              >
-                Request admin approval
-              </button>
-            </div>
-          )}
-          {candidate.proposal && (
-            <p className="text-sm text-muted">
-              Requested goal:{" "}
-              {displaySol(BigInt(candidate.proposal.goalLamports))} SOL
-            </p>
-          )}
-          {candidate.status === "requested" && (
-            <p className="text-sm text-muted">
-              Awaiting GlobalConfig admin approval.
-            </p>
-          )}
-          {candidate.status === "approved" && (
-            <p className="text-sm text-muted">
-              Approved; the admin can complete campaign creation from the
-              disaster review dashboard.
-            </p>
-          )}
-          {candidate.status === "activated" && (
-            <p className="text-sm text-muted">Campaign is active.</p>
-          )}
-        </article>
-      ))}
+              Request admin approval
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
