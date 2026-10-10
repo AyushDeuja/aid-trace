@@ -332,7 +332,8 @@ export default function OrganizationDisastersPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="request-approval-title"
-            className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-card p-6 text-card-foreground shadow-xl"
+            className="relative z-10 w-full rounded-xl border border-border bg-card p-5 text-card-foreground shadow-xl sm:p-6"
+            style={{ maxWidth: "28rem" }}
           >
             <h2
               id="request-approval-title"
