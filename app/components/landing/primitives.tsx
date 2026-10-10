@@ -54,9 +54,9 @@ export function LiveFundPath({
     >
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-extrabold text-white">LIVE FUND PATH</h2>
-        <Badge variant="live">
+        <Badge variant="verified">
           <Zap className="size-3" />
-          Reconciled 4m ago
+          Canonical record
         </Badge>
       </div>
       <ol className="relative mt-7 grid grid-cols-5">
