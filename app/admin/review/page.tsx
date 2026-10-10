@@ -1,8 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { address } from "@solana/kit";
+import { address, type Instruction } from "@solana/kit";
 import { useCluster } from "../../components/cluster-context";
-import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
 import {
@@ -10,11 +9,37 @@ import {
   rpcCall,
   setStatusIx,
   setVerifiedIx,
+  type OrganizationAccount,
 } from "../../lib/organizations/chain";
-import { setCampaignStatusIx } from "../../lib/campaigns/chain";
+import { setCampaignStatusIx, type Campaign } from "../../lib/campaigns/chain";
 import { resolveFraudFlagIx } from "../../lib/trust-chain";
 
-type Review = { organizations: any[]; campaigns: any[]; disasters: any[] };
+type MetadataReview = { state: string };
+type FraudFlagReview = {
+  address: string;
+  resolution: "open" | "resolved" | "dismissed";
+  score: number;
+};
+type OrganizationReview = OrganizationAccount & {
+  unavailable?: boolean;
+  metadata: MetadataReview;
+};
+type CampaignReview = Campaign & {
+  unavailable?: boolean;
+  metadata: MetadataReview;
+  fraudFlag?: FraudFlagReview | null;
+};
+type DisasterReview = {
+  id: string;
+  title: string;
+  disaster_type: string;
+  location: string;
+};
+type Review = {
+  organizations: OrganizationReview[];
+  campaigns: CampaignReview[];
+  disasters: DisasterReview[];
+};
 export default function AdminReviewPage() {
   const { cluster, getExplorerUrl } = useCluster();
   const { wallet } = useWallet();
@@ -62,14 +87,20 @@ export default function AdminReviewPage() {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "Review data unavailable");
-    setData(body);
+    setData(body as Review);
   }, [allowed, cluster, wallet, walletAddress]);
   useEffect(() => {
     let live = true;
-    setData({ organizations: [], campaigns: [], disasters: [] });
-    setMessage("");
+    const clear = () => {
+      queueMicrotask(() => {
+        if (!live) return;
+        setData({ organizations: [], campaigns: [], disasters: [] });
+        setMessage("");
+      });
+    };
+    clear();
     if (!walletAddress) {
-      setAllowed(false);
+      queueMicrotask(() => live && setAllowed(false));
       return;
     }
     void fetchAdmin(cluster)
@@ -82,16 +113,21 @@ export default function AdminReviewPage() {
     };
   }, [cluster, walletAddress]);
   useEffect(() => {
-    void load().catch((e) =>
-      setMessage(e instanceof Error ? e.message : "Review data unavailable")
-    );
+    const timer = window.setTimeout(() => {
+      void load().catch((e) =>
+        setMessage(e instanceof Error ? e.message : "Review data unavailable")
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
-  const transact = async (build: () => Promise<any>, label: string) => {
+  const transact = async (build: () => Promise<Instruction>, label: string) => {
     try {
       setMessage("Awaiting wallet approval");
       const signature = await send({ instructions: [await build()] });
       for (let i = 0; i < 30; i++) {
-        const s = await rpcCall<any>(cluster, "getSignatureStatuses", [
+        const s = await rpcCall<{
+          value: Array<{ err: unknown; confirmationStatus: string } | null>;
+        }>(cluster, "getSignatureStatuses", [
           [signature],
           { searchTransactionHistory: true },
         ]);
@@ -113,7 +149,6 @@ export default function AdminReviewPage() {
   if (!allowed)
     return (
       <main className="mx-auto max-w-5xl space-y-4 px-5 py-10">
-        <WalletButton />
         <p role="alert" className="rounded border p-4">
           Connect the GlobalConfig admin wallet to access review.
         </p>
@@ -134,7 +169,6 @@ export default function AdminReviewPage() {
             Canonical lifecycle state and digest-verified metadata.
           </p>
         </div>
-        <WalletButton />
       </header>
       {message && (
         <p role="status" className="break-all rounded border p-3">

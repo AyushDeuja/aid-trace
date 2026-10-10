@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { WalletButton } from "../../components/wallet-button";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
 import { organizationPda } from "../../lib/organizations/chain";
@@ -143,7 +142,6 @@ export default function OrganizationDisastersPage() {
             creates the active canonical campaign.
           </p>
         </div>
-        <WalletButton />
       </header>
       {error && (
         <p role="alert" className="rounded border p-3">

@@ -1,153 +1,200 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useWallet } from "../lib/wallet/context";
+import Link from "next/link";
+import { useState } from "react";
+import {
+  Building2,
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  HeartHandshake,
+  LogOut,
+  ShieldCheck,
+  UserRound,
+  WalletCards,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useViewerRole } from "../lib/hooks/use-viewer-role";
+import { donorView, publicView } from "../lib/navigation";
 import { useBalance } from "../lib/hooks/use-balance";
 import { lamportsToSolString } from "../lib/lamports";
 import { ellipsify } from "../lib/explorer";
+import { useWallet } from "../lib/wallet/context";
 import { useCluster } from "./cluster-context";
 
-export function WalletButton() {
+export function WalletButton({ compact = false }: { compact?: boolean }) {
   const { connectors, connect, disconnect, wallet, status, error } =
     useWallet();
-
   const { getExplorerUrl } = useCluster();
-  const [isOpen, setIsOpen] = useState(false);
+  const { isAdmin, isOrganizationAuthority, loading } = useViewerRole();
   const [copied, setCopied] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
   const address = wallet?.account.address;
   const balance = useBalance(address);
 
-  const open = () => setIsOpen(true);
-  const close = () => setIsOpen(false);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        close();
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleCopy = async () => {
+  const copyAddress = async () => {
     if (!address) return;
     await navigator.clipboard.writeText(address);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    window.setTimeout(() => setCopied(false), 2_000);
   };
 
   if (status !== "connected") {
     return (
-      <div className="relative" ref={ref}>
-        <button
-          onClick={() => (isOpen ? close() : open())}
-          className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90"
-        >
-          Connect Wallet
-        </button>
-
-        {isOpen && (
-          <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-border-low bg-card p-3 shadow-lg">
-            <p className="mb-2 text-xs font-medium text-muted">
-              Choose a wallet
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size={compact ? "icon" : "sm"} aria-label="Connect wallet">
+            <WalletCards />
+            {!compact && "Connect wallet"}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel>Connect a wallet</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {connectors.map((connector) => (
+            <DropdownMenuItem
+              key={connector.id}
+              onSelect={() => void connect(connector.id)}
+              disabled={status === "connecting"}
+            >
+              {connector.icon ? (
+                <img src={connector.icon} alt="" className="size-5 rounded" />
+              ) : (
+                <WalletCards />
+              )}
+              {connector.name}
+            </DropdownMenuItem>
+          ))}
+          {status === "connecting" && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              Connecting…
             </p>
-            <div className="space-y-1">
-              {connectors.map((connector) => (
-                <button
-                  key={connector.id}
-                  onClick={async () => {
-                    try {
-                      await connect(connector.id);
-                      close();
-                    } catch {
-                      // connection errors are surfaced through context state
-                    }
-                  }}
-                  disabled={status === "connecting"}
-                  className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition hover:bg-cream disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  {connector.icon && (
-                    <img
-                      src={connector.icon}
-                      alt=""
-                      className="h-5 w-5 rounded"
-                    />
-                  )}
-                  <span>{connector.name}</span>
-                </button>
-              ))}
-            </div>
-            {status === "connecting" && (
-              <p className="mt-2 text-xs text-muted">Connecting...</p>
-            )}
-            {error != null && (
-              <p className="mt-2 text-xs text-destructive">
-                {error instanceof Error ? error.message : String(error)}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+          {error != null && (
+            <p className="px-2 py-1.5 text-xs text-destructive">
+              {error instanceof Error ? error.message : String(error)}
+            </p>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => (isOpen ? close() : open())}
-        className="flex cursor-pointer items-center gap-2 rounded-lg border border-border-low bg-card px-3 py-2 text-xs font-medium transition hover:bg-cream"
-      >
-        <span className="h-2 w-2 rounded-full bg-green-500" />
-        <span className="font-mono">{ellipsify(address!, 4)}</span>
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-border-low bg-card p-4 shadow-lg">
-          <div className="mb-3">
-            <p className="text-xs text-muted">Balance</p>
-            <p className="text-lg font-bold tabular-nums">
-              {balance.lamports != null
-                ? lamportsToSolString(balance.lamports)
-                : "\u2014"}{" "}
-              <span className="text-sm font-normal text-muted">SOL</span>
-            </p>
-          </div>
-
-          <div className="mb-3 rounded-lg border border-border-low bg-cream/50 px-3 py-2">
-            <p className="break-all font-mono text-xs">{address}</p>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleCopy}
-              className="flex-1 cursor-pointer rounded-lg border border-border-low bg-card px-3 py-2 text-xs font-medium transition hover:bg-cream"
-            >
-              {copied ? "Copied!" : "Copy address"}
-            </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size={compact ? "icon" : "sm"}
+          className="gap-2"
+          aria-label="Open wallet menu"
+        >
+          <span
+            className="size-2 rounded-full bg-emerald-500"
+            aria-hidden="true"
+          />
+          {!compact && (
+            <span className="font-mono">{ellipsify(address!, 4)}</span>
+          )}
+          {!compact && <ChevronDown />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel>Wallet</DropdownMenuLabel>
+        <div className="px-2 pb-2">
+          <p className="text-xs text-muted-foreground">Balance</p>
+          <p className="font-semibold tabular-nums">
+            {balance.lamports == null
+              ? "—"
+              : lamportsToSolString(balance.lamports)}{" "}
+            SOL
+          </p>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+            {address}
+          </p>
+        </div>
+        <DropdownMenuGroup>
+          <DropdownMenuItem onSelect={() => void copyAddress()}>
+            {copied ? <Check /> : <Copy />}
+            {copied ? "Address copied" : "Copy address"}
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <a
               href={getExplorerUrl(`/address/${address}`)}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 rounded-lg border border-border-low bg-card px-3 py-2 text-center text-xs font-medium transition hover:bg-cream"
             >
-              Explorer
+              <ExternalLink /> Open in explorer
             </a>
-          </div>
-
-          <button
-            onClick={() => {
-              disconnect();
-              close();
-            }}
-            className="mt-2 w-full cursor-pointer rounded-lg border border-border-low bg-card px-3 py-2 text-xs font-medium text-destructive transition hover:bg-destructive/10"
-          >
-            Disconnect
-          </button>
-        </div>
-      )}
-    </div>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Switch view</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuItem asChild>
+            <Link href={publicView.href}>
+              <UserRound />
+              {publicView.label}
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href={donorView.href}>
+              <HeartHandshake />
+              {donorView.label}
+            </Link>
+          </DropdownMenuItem>
+          {isOrganizationAuthority ? (
+            <DropdownMenuItem asChild>
+              <Link href="/org">
+                <Building2 />
+                Organization view
+              </Link>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled>
+              <Building2 />
+              Organization view {loading ? "(checking…)" : "(unavailable)"}
+            </DropdownMenuItem>
+          )}
+          {isAdmin && (
+            <DropdownMenuItem asChild>
+              <Link href="/admin/review">
+                <ShieldCheck />
+                Admin view
+              </Link>
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuGroup>
+        {isAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Admin tools</DropdownMenuLabel>
+            <DropdownMenuItem asChild>
+              <Link href="/admin/disasters">Disasters</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/admin/fraud">Fraud review</Link>
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => void disconnect()}
+        >
+          <LogOut />
+          Disconnect
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

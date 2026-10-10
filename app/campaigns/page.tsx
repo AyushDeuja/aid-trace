@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { address } from "@solana/kit";
 import { useCluster } from "../components/cluster-context";
-import { WalletButton } from "../components/wallet-button";
 import { useWallet } from "../lib/wallet/context";
 import { useSendTransaction } from "../lib/hooks/use-send-transaction";
 import {
@@ -162,7 +161,6 @@ export default function CampaignsPage() {
             Canonical Devnet campaigns and SOL totals
           </p>
         </div>
-        <WalletButton />
       </header>
       {cluster !== "devnet" && cluster !== "localnet" && (
         <p role="alert">Select Devnet or localnet to use campaigns.</p>

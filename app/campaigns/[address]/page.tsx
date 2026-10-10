@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { address } from "@solana/kit";
 import { useCluster } from "../../components/cluster-context";
-import { WalletButton } from "../../components/wallet-button";
 import { useWallet } from "../../lib/wallet/context";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
 import {
@@ -150,7 +149,6 @@ export default function CampaignDetailPage() {
         <Link className="underline" href="/campaigns">
           Campaigns
         </Link>
-        <WalletButton />
       </header>
       {error && (
         <p role="alert" className="rounded border border-red-500 p-3">

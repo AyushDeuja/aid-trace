@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { lamports as sol } from "@solana/kit";
 import { toast } from "sonner";
 import { useWallet } from "./lib/wallet/context";
@@ -10,12 +9,6 @@ import { lamportsToSolString } from "./lib/lamports";
 import { useSolanaClient } from "./lib/solana-client-context";
 import { ellipsify } from "./lib/explorer";
 import { GridBackground } from "./components/grid-background";
-import { ThemeToggle } from "./components/theme-toggle";
-import { ClusterSelect } from "./components/cluster-select";
-import { FraudReviewLink } from "./components/fraud-review-link";
-import { DisasterReviewLink } from "./components/disaster-review-link";
-import { AdminReviewLink } from "./components/admin-review-link";
-import { WalletButton } from "./components/wallet-button";
 import { useCluster } from "./components/cluster-context";
 
 export default function Home() {
@@ -83,28 +76,6 @@ export default function Home() {
       <GridBackground />
 
       <div className="relative z-10">
-        {/* Header */}
-        <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-sm font-semibold tracking-tight">AidTrace</span>
-          <div className="flex items-center gap-3">
-            <Link href="/org" className="text-sm underline">
-              Organizations
-            </Link>
-            <Link href="/org/finance" className="text-sm underline">
-              Finance
-            </Link>
-            <Link href="/campaigns" className="text-sm underline">
-              Campaigns
-            </Link>
-            <FraudReviewLink />
-            <DisasterReviewLink />
-            <AdminReviewLink />
-            <ThemeToggle />
-            <ClusterSelect />
-            <WalletButton />
-          </div>
-        </header>
-
         <main className="mx-auto max-w-6xl px-6">
           {/* Hero */}
           <section className="pt-6 pb-20 md:pt-8 md:pb-32">
