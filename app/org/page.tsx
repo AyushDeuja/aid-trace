@@ -1,111 +1,187 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { address, type Address, type Instruction } from "@solana/kit";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { address, type Instruction } from "@solana/kit";
+import { Check, Plus, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useWallet } from "../lib/wallet/context";
 import { useCluster } from "../components/cluster-context";
 import { useSendTransaction } from "../lib/hooks/use-send-transaction";
 import {
-  acceptAuthorityIx,
   fetchAdmin,
   fetchOrganization,
-  nominateAuthorityIx,
   organizationPda,
   registerOrganizationIx,
   rpcCall,
   setStatusIx,
   setVerifiedIx,
-  updateMetadataIx,
   type OrganizationAccount,
 } from "../lib/organizations/chain";
+import { ellipsify } from "../lib/explorer";
 
-type ListedOrganization = OrganizationAccount & {
-  metadata?: { name: string } | null;
+type ListedOrganization = Omit<
+  OrganizationAccount,
+  "verifiedDeliveryCount" | "nextCampaignId"
+> & {
+  verifiedDeliveryCount: string;
+  nextCampaignId: string;
+  metadata?: { name: string; description: string; website?: string } | null;
 };
+
+const shortError = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? error.message : "";
+  if (/InvalidStatusTransition|status transition/i.test(message))
+    return "This organization cannot move to that status.";
+  if (/signature|rejected/i.test(message))
+    return "Wallet signature was rejected or expired.";
+  return fallback;
+};
+
 export default function OrganizationPage() {
+  const router = useRouter();
   const { wallet } = useWallet();
-  const { cluster, getExplorerUrl } = useCluster();
+  const { cluster } = useCluster();
   const { send, isSending } = useSendTransaction();
   const walletAddress = wallet?.account.address;
-  const supported = cluster === "devnet" || cluster === "localnet";
-  const [mine, setMine] = useState<OrganizationAccount | null>(null);
-  const [selected, setSelected] = useState<OrganizationAccount | null>(null);
   const [organizations, setOrganizations] = useState<ListedOrganization[]>([]);
-  const [admin, setAdmin] = useState<Address | null>(null);
+  const [admin, setAdmin] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [website, setWebsite] = useState("");
-  const [nextAuthority, setNextAuthority] = useState("");
-  const [message, setMessage] = useState("");
-  const [stage, setStage] = useState("");
-  const [signature, setSignature] = useState("");
 
   const refresh = useCallback(async () => {
-    if (!supported) return;
+    setLoading(true);
     try {
-      const [adminKey, listing] = await Promise.all([
+      const [adminKey, response] = await Promise.all([
         fetchAdmin(cluster),
-        fetch(`/api/organizations?cluster=${cluster}`).then((r) =>
-          r.ok ? (r.json() as Promise<ListedOrganization[]>) : []
-        ),
+        fetch(`/api/organizations?cluster=${cluster}`),
       ]);
+      if (!response.ok) throw new Error("Could not load indexed organizations");
       setAdmin(adminKey);
-      setOrganizations(listing);
-      if (walletAddress) {
-        const key = await organizationPda(walletAddress);
-        const own = await fetchOrganization(cluster, key);
-        setMine(own);
-        if (own) setSelected(own);
-        else {
-          const managed = listing.find(
-            (item) =>
-              item.authority === walletAddress ||
-              item.pendingAuthority === walletAddress
-          );
-          if (managed)
-            setSelected(await fetchOrganization(cluster, managed.address));
-        }
-      } else {
-        setMine(null);
-        setSelected(null);
-      }
+      setOrganizations((await response.json()) as ListedOrganization[]);
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Could not load organizations"
+      toast.error(
+        shortError(
+          error,
+          "Organization records are unavailable. Please refresh."
+        )
       );
+      setOrganizations([]);
+    } finally {
+      setLoading(false);
     }
-  }, [cluster, supported, walletAddress]);
+  }, [cluster]);
+
   useEffect(() => {
-    const handle = setTimeout(() => void refresh(), 0);
-    return () => clearTimeout(handle);
+    const timer = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timer);
   }, [refresh]);
+
+  const isAdmin = Boolean(walletAddress && admin === walletAddress);
+  const myOrganizations = useMemo(
+    () =>
+      organizations.filter(
+        (organization) => organization.founder === walletAddress
+      ),
+    [organizations, walletAddress]
+  );
+  const rows = isAdmin ? organizations : myOrganizations;
+  const canCreate = Boolean(
+    walletAddress && !isAdmin && myOrganizations.length === 0
+  );
 
   const transact = async (
     build: () => Promise<Instruction>,
-    after?: () => Promise<void>
+    success: string
   ) => {
-    setMessage("");
-    setSignature("");
-    setStage("Preparing");
+    const id = toast.loading("Awaiting wallet approval");
     try {
-      const ix = await build();
-      setStage("Awaiting wallet signature");
-      const sig = await send({ instructions: [ix] });
-      setSignature(sig);
-      setStage("Confirming");
-      let confirmed = false;
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const status = await rpcCall<{
+      const signature = await send({ instructions: [await build()] });
+      toast.loading("Transaction submitted. Confirming on Solana…", { id });
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const result = await rpcCall<{
           value: Array<{ err: unknown; confirmationStatus: string } | null>;
         }>(cluster, "getSignatureStatuses", [
-          [sig],
+          [signature],
           { searchTransactionHistory: true },
         ]);
-        if (status.value[0]?.err)
+        if (result.value[0]?.err)
           throw new Error("Transaction failed on Solana");
         if (
           ["confirmed", "finalized"].includes(
-            status.value[0]?.confirmationStatus || ""
+            result.value[0]?.confirmationStatus || ""
+          )
+        ) {
+          toast.success(success, { id });
+          await refresh();
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      throw new Error("Transaction confirmation timed out");
+    } catch (error) {
+      toast.error(
+        shortError(error, "Transaction validation failed. Please try again."),
+        { id }
+      );
+    }
+  };
+
+  const canonical = async (item: ListedOrganization) => {
+    const value = await fetchOrganization(cluster, address(item.address));
+    if (!value) throw new Error("Organization is no longer available on-chain");
+    return value;
+  };
+  const createOrganization = async () => {
+    if (!walletAddress)
+      return toast.error("Connect an organization wallet first.");
+    const id = toast.loading("Preparing immutable organization metadata…");
+    try {
+      const metadataResponse = await fetch("/api/metadata", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "organization",
+          metadata: { name, description, ...(website ? { website } : {}) },
+        }),
+      });
+      const metadata = await metadataResponse.json();
+      if (!metadataResponse.ok)
+        throw new Error(metadata.error || "Invalid organization details");
+      toast.loading("Awaiting wallet approval", { id });
+      const signature = await send({
+        instructions: [
+          await registerOrganizationIx(address(walletAddress), metadata.digest),
+        ],
+      });
+      toast.loading("Registration submitted. Confirming on Solana…", { id });
+      let confirmed = false;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const result = await rpcCall<{
+          value: Array<{ err: unknown; confirmationStatus: string } | null>;
+        }>(cluster, "getSignatureStatuses", [
+          [signature],
+          { searchTransactionHistory: true },
+        ]);
+        if (result.value[0]?.err)
+          throw new Error("Transaction failed on Solana");
+        if (
+          ["confirmed", "finalized"].includes(
+            result.value[0]?.confirmationStatus || ""
           )
         ) {
           confirmed = true;
@@ -113,348 +189,276 @@ export default function OrganizationPage() {
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      if (!confirmed)
-        throw new Error(
-          "Transaction submitted, but confirmation timed out. Check the explorer before retrying."
+      if (!confirmed) throw new Error("Transaction confirmation timed out");
+      const key = await organizationPda(address(walletAddress));
+      const link = await fetch(`/api/organizations/${key}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uri: metadata.uri, cluster }),
+      });
+      if (!link.ok)
+        toast.message(
+          "Registration submitted. Metadata will appear after indexing."
         );
-      setStage("Confirmed on Solana");
-      if (after) await after();
+      setCreateOpen(false);
+      setName("");
+      setDescription("");
+      setWebsite("");
+      toast.success(`Organization registered: ${ellipsify(signature)}`, { id });
       await refresh();
     } catch (error) {
-      setStage("Failed");
-      setMessage(error instanceof Error ? error.message : String(error));
+      toast.error(
+        shortError(
+          error,
+          "Could not create the organization. Check the form and try again."
+        ),
+        { id }
+      );
     }
   };
-  const prepareMetadata = async () => {
-    const response = await fetch("/api/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "organization",
-        metadata: { name, description, ...(website ? { website } : {}) },
-      }),
-    });
-    const body = await response.json();
-    if (!response.ok)
-      throw new Error(body.error || "Metadata could not be validated");
-    return body as { digest: string; uri: string };
-  };
-  const saveUri = async (key: Address, uri: string) => {
-    const response = await fetch(`/api/organizations/${key}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ uri, cluster }),
-    });
-    if (!response.ok)
-      setMessage(
-        "Transaction confirmed; metadata link will appear after the indexer runs. Save this URI and retry."
-      );
-  };
-  const canManage = selected?.authority === walletAddress;
-  const isAdmin = !!walletAddress && admin === walletAddress;
-  const disabled = isSending || !supported;
 
-  return (
-    <main className="mx-auto max-w-4xl space-y-8 px-5 py-10">
-      <header className="flex flex-wrap items-center justify-between gap-4">
+  const columns: DataTableColumn<ListedOrganization>[] = [
+    {
+      key: "organization",
+      header: "Organization",
+      cell: (item) => (
         <div>
-          <h1 className="text-3xl font-semibold">Organizations</h1>
-          <p className="text-sm text-muted">
-            Register, review, and manage canonical organization identity.
+          <p className="font-semibold">
+            {item.metadata?.name || ellipsify(item.address)}
+          </p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {ellipsify(item.address, 6)}
           </p>
         </div>
-      </header>
-      {!supported && (
-        <p role="alert" className="rounded-lg border p-4">
-          Organization management is available on Devnet and localnet.
-        </p>
-      )}
-      {stage && (
-        <p role="status">
-          Transaction: {stage}
-          {signature && (
+      ),
+    },
+    {
+      key: "authority",
+      header: "Authority",
+      cell: (item) => (
+        <span className="font-mono text-xs">
+          {ellipsify(item.authority, 6)}
+        </span>
+      ),
+    },
+    {
+      key: "verification",
+      header: "Verification",
+      cell: (item) => (
+        <Badge variant={item.verified ? "verified" : "warning"}>
+          {item.verified ? (
             <>
-              {" "}
-              ·{" "}
-              <a
-                className="underline"
-                href={getExplorerUrl(`/tx/${signature}`)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View transaction
-              </a>
+              <Check /> Verified
             </>
+          ) : (
+            "Pending verification"
           )}
-        </p>
-      )}
-      {message && (
-        <p role="alert" className="rounded-lg border border-red-500 p-3">
-          {message}
-        </p>
-      )}
-
-      {walletAddress && !mine && !selected && (
-        <section className="space-y-4 rounded-xl border p-5">
-          <h2 className="text-xl font-semibold">Register an organization</h2>
-          <p className="text-sm text-muted">
-            Enter a profile below. Registration starts in Pending status.
-          </p>
-          <label className="block text-sm">
-            Name
-            <input
-              className="mt-1 w-full rounded border p-2"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            Description
-            <textarea
-              className="mt-1 w-full rounded border p-2"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            Website (optional)
-            <input
-              className="mt-1 w-full rounded border p-2"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              placeholder="https://example.org"
-            />
-          </label>
-          <button
-            className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
-            disabled={disabled || !name || !description}
-            onClick={() => {
-              let metadata: { digest: string; uri: string } | undefined;
-              void transact(
-                async () => {
-                  metadata = await prepareMetadata();
-                  return registerOrganizationIx(
-                    address(walletAddress),
-                    metadata.digest
-                  );
-                },
-                async () =>
-                  saveUri(
-                    await organizationPda(address(walletAddress)),
-                    metadata!.uri
-                  )
-              );
-            }}
+        </Badge>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (item) => (
+        <Badge
+          variant={
+            item.status === "Active"
+              ? "verified"
+              : item.status === "Suspended" || item.status === "Closed"
+                ? "outline"
+                : "warning"
+          }
+        >
+          {item.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (item) =>
+        isAdmin ? (
+          <div
+            className="flex justify-end gap-2"
+            onClick={(event) => event.stopPropagation()}
           >
-            Register with wallet
-          </button>
-        </section>
-      )}
-
-      {selected && (
-        <section className="space-y-4 rounded-xl border p-5">
-          <h2 className="text-xl font-semibold">
-            {organizations.find((item) => item.address === selected.address)
-              ?.metadata?.name || "Organization"}
-          </h2>
-          <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-muted">Address</dt>
-              <dd className="break-all font-mono">{selected.address}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Authority</dt>
-              <dd className="break-all font-mono">{selected.authority}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Canonical status</dt>
-              <dd>{selected.status}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Verification</dt>
-              <dd>
-                {selected.verified
-                  ? "Admin verified"
-                  : "Awaiting admin verification"}
-              </dd>
-            </div>
-          </dl>
-          <button className="text-sm underline" onClick={() => void refresh()}>
-            Refresh canonical state
-          </button>
-          <a
-            className="inline-flex rounded border px-3 py-2 text-sm hover:bg-muted"
-            href={`/org/finance?organization=${encodeURIComponent(selected.address)}`}
-          >
-            Open finance & verification
-          </a>
-          {canManage && (
-            <a
-              className="inline-flex rounded border px-3 py-2 text-sm hover:bg-muted"
-              href="/org/disasters"
-            >
-              Review disaster opportunities
-            </a>
-          )}
-          {canManage && selected.status !== "Closed" && (
-            <div className="space-y-3 border-t pt-4">
-              <h3 className="font-semibold">Manage profile</h3>
-              <label className="block text-sm">
-                Name
-                <input
-                  className="mt-1 w-full rounded border p-2"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
-                Description
-                <textarea
-                  className="mt-1 w-full rounded border p-2"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
-                Website (optional)
-                <input
-                  className="mt-1 w-full rounded border p-2"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                />
-              </label>
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
-                disabled={disabled || !name || !description}
-                onClick={() => {
-                  let metadata: { digest: string; uri: string } | undefined;
+            {!item.verified && (
+              <Button
+                size="sm"
+                disabled={isSending}
+                onClick={() =>
                   void transact(
-                    async () => {
-                      metadata = await prepareMetadata();
-                      return updateMetadataIx(selected, metadata.digest);
-                    },
-                    async () => saveUri(selected.address, metadata!.uri)
-                  );
-                }}
-              >
-                Update metadata
-              </button>
-              <label className="block text-sm">
-                New authority wallet
-                <input
-                  className="mt-1 w-full rounded border p-2"
-                  value={nextAuthority}
-                  onChange={(e) => setNextAuthority(e.target.value)}
-                />
-              </label>
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
-                disabled={disabled || !nextAuthority}
-                onClick={() =>
-                  void transact(async () =>
-                    nominateAuthorityIx(selected, address(nextAuthority))
+                    async () =>
+                      setVerifiedIx(
+                        await canonical(item),
+                        address(walletAddress!),
+                        true
+                      ),
+                    "Organization verified."
                   )
                 }
               >
-                Nominate authority
-              </button>
-            </div>
-          )}
-          {selected.pendingAuthority === walletAddress && (
-            <button
-              className="rounded border px-3 py-2 disabled:opacity-50"
-              disabled={disabled}
-              onClick={() =>
-                void transact(async () =>
-                  acceptAuthorityIx(selected, address(walletAddress))
-                )
-              }
-            >
-              Accept authority
-            </button>
-          )}
-          {isAdmin && selected.status !== "Closed" && (
-            <div className="space-x-2 space-y-2 border-t pt-4">
-              <h3 className="font-semibold">Admin controls</h3>
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
-                disabled={disabled}
+                <Check /> Verify
+              </Button>
+            )}
+            {item.verified && item.status === "Pending" && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isSending}
                 onClick={() =>
-                  void transact(async () =>
-                    setVerifiedIx(
-                      selected,
-                      address(walletAddress),
-                      !selected.verified
-                    )
+                  void transact(
+                    async () =>
+                      setStatusIx(
+                        await canonical(item),
+                        address(walletAddress!),
+                        "Active"
+                      ),
+                    "Organization activated."
                   )
                 }
               >
-                {selected.verified
-                  ? "Revoke verification"
-                  : "Verify organization"}
-              </button>
-              {selected.verified && selected.status !== "Active" && (
-                <button
-                  className="rounded border px-3 py-2 disabled:opacity-50"
-                  disabled={disabled}
-                  onClick={() =>
-                    void transact(async () =>
-                      setStatusIx(selected, address(walletAddress), "Active")
-                    )
-                  }
-                >
-                  Activate
-                </button>
-              )}
-              {selected.status === "Active" && (
-                <button
-                  className="rounded border px-3 py-2 disabled:opacity-50"
-                  disabled={disabled}
-                  onClick={() =>
-                    void transact(async () =>
-                      setStatusIx(selected, address(walletAddress), "Suspended")
-                    )
-                  }
-                >
-                  Suspend
-                </button>
-              )}
-              <button
-                className="rounded border px-3 py-2 disabled:opacity-50"
-                disabled={disabled}
-                onClick={() => {
-                  if (window.confirm("Close this organization permanently?"))
-                    void transact(async () =>
-                      setStatusIx(selected, address(walletAddress), "Closed")
-                    );
-                }}
-              >
-                Close
-              </button>
-            </div>
-          )}
-        </section>
-      )}
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">Indexed organizations</h2>
-        {organizations.map((item) => (
-          <button
-            key={item.address}
-            className="block w-full rounded border p-3 text-left"
-            onClick={async () =>
-              setSelected(
-                await fetchOrganization(
-                  cluster === "localnet" ? "localnet" : "devnet",
-                  item.address
-                )
-              )
-            }
+                Activate
+              </Button>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">View details</span>
+        ),
+    },
+  ];
+
+  return (
+    <main className="mx-auto max-w-7xl space-y-7 px-5 py-8 lg:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-7">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-primary uppercase">
+            <span className="h-px w-5 bg-primary" />
+            {isAdmin ? "Admin" : "Organization workspace"}
+          </p>
+          <h1 className="mt-3 font-serif text-4xl font-semibold tracking-tight sm:text-5xl">
+            Organizations
+          </h1>
+          <p className="mt-3 text-base text-muted-foreground">
+            {isAdmin
+              ? "Verify, inspect, and manage indexed organizations."
+              : "Your canonical organization identity and operating status."}
+          </p>
+        </div>
+        {canCreate && (
+          <Button
+            onClick={() => setCreateOpen(true)}
+            className="rounded-full px-5"
           >
-            {item.metadata?.name || item.address} · {item.status} ·{" "}
-            {item.verified ? "Verified" : "Unverified"}
-          </button>
-        ))}
-      </section>
+            <Plus /> Create organization
+          </Button>
+        )}
+      </header>
+      {!walletAddress ? (
+        <EmptyState
+          title="Connect a wallet to manage an organization"
+          detail="Organization registration and management require an explicit wallet signature."
+        />
+      ) : !isAdmin && !loading && rows.length === 0 ? (
+        <EmptyState
+          title="No organization created by this wallet"
+          detail="Create a canonical organization profile to begin."
+          action={
+            <Button
+              onClick={() => setCreateOpen(true)}
+              className="rounded-full"
+            >
+              <Plus /> Create organization
+            </Button>
+          }
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(item) => item.address}
+          loading={loading}
+          onRowClick={(item) => router.push(`/org/${item.address}`)}
+          emptyMessage="No indexed organizations are available on this cluster."
+        />
+      )}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create organization</DialogTitle>
+            <DialogDescription>
+              Your profile begins in Pending status and requires an admin
+              review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 space-y-4">
+            <label className="block text-sm font-medium">
+              Name
+              <Input
+                className="mt-1.5"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Organization name"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Description
+              <textarea
+                className="mt-1.5 min-h-28 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="What does your organization do?"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Website{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+              <Input
+                className="mt-1.5"
+                value={website}
+                onChange={(event) => setWebsite(event.target.value)}
+                placeholder="https://example.org"
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={isSending || !name.trim() || !description.trim()}
+                onClick={() => void createOrganization()}
+              >
+                Create with wallet
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
+  );
+}
+
+function EmptyState({
+  title,
+  detail,
+  action,
+}: {
+  title: string;
+  detail: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center shadow-sm">
+      <ShieldCheck className="mx-auto size-7 text-primary" />
+      <h2 className="mt-4 font-serif text-2xl font-semibold">{title}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+        {detail}
+      </p>
+      {action && <div className="mt-5">{action}</div>}
+    </section>
   );
 }
