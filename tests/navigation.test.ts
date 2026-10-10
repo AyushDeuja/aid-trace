@@ -44,12 +44,7 @@ test("primary navigation remains public while workspace navigation is role-scope
   );
   assert.deepEqual(
     workspaceNavigation.organization.map((item) => item.href),
-    [
-      "/org",
-      "/org/finance",
-      "/org/finance?section=verification",
-      "/org/disasters",
-    ]
+    ["/org", "/org/finance", "/org/verification", "/org/disasters"]
   );
   assert.deepEqual(
     workspaceNavigation.admin.map((item) => item.href),

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { type PropsWithChildren, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -39,18 +39,7 @@ function workspaceForPath(pathname: string, workspace: Workspace) {
   return null;
 }
 
-function isActive(
-  pathname: string,
-  searchParams: URLSearchParams,
-  item: NavigationItem
-) {
-  if (item.financeSection)
-    return (
-      pathname === "/org/finance" &&
-      (item.financeSection === "verification"
-        ? searchParams.get("section") === "verification"
-        : searchParams.get("section") !== "verification")
-    );
+function isActive(pathname: string, item: NavigationItem) {
   const hrefPath = item.href.split("?")[0];
   return (
     pathname === hrefPath ||
@@ -58,23 +47,27 @@ function isActive(
   );
 }
 
-function destination(item: NavigationItem, searchParams: URLSearchParams) {
-  if (!item.financeSection || !searchParams.get("organization"))
+function destination(item: NavigationItem) {
+  const organization =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("organization");
+  if (
+    (!item.href.startsWith("/org/finance") &&
+      !item.href.startsWith("/org/verification")) ||
+    !organization
+  )
     return item.href;
-  const query = new URLSearchParams(item.href.split("?")[1]);
-  query.set("organization", searchParams.get("organization")!);
-  return `/org/finance?${query.toString()}`;
+  return `${item.href}?organization=${encodeURIComponent(organization)}`;
 }
 
 function WorkspaceLinks({
   items,
   pathname,
-  searchParams,
   close,
 }: {
   items: NavigationItem[];
   pathname: string;
-  searchParams: URLSearchParams;
   close?: boolean;
 }) {
   return (
@@ -82,10 +75,10 @@ function WorkspaceLinks({
       {items.map((item) => {
         const link = (
           <Link
-            href={destination(item, searchParams)}
+            href={destination(item)}
             className={cn(
               "block rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-              isActive(pathname, searchParams, item)
+              isActive(pathname, item)
                 ? "bg-[#17130e] text-[#fffaf0]"
                 : "text-foreground hover:bg-[#eee9e1]"
             )}
@@ -107,7 +100,6 @@ function WorkspaceLinks({
 
 export function WorkspaceShell({ children }: PropsWithChildren) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { wallet } = useWallet();
   const role = useViewerRole();
   const workspace = useMemo(
@@ -129,11 +121,7 @@ export function WorkspaceShell({ children }: PropsWithChildren) {
           <p className="mb-4 px-2 text-[10px] font-semibold tracking-wide text-muted-foreground">
             {label}
           </p>
-          <WorkspaceLinks
-            items={items}
-            pathname={pathname}
-            searchParams={searchParams}
-          />
+          <WorkspaceLinks items={items} pathname={pathname} />
         </aside>
         <div className="min-w-0 flex-1">
           <div className="border-b border-[#ddd7cf] px-4 py-3 lg:hidden">
@@ -155,12 +143,7 @@ export function WorkspaceShell({ children }: PropsWithChildren) {
                 <SheetTitle className="mb-5 text-xs tracking-wide text-muted-foreground">
                   {label}
                 </SheetTitle>
-                <WorkspaceLinks
-                  items={items}
-                  pathname={pathname}
-                  searchParams={searchParams}
-                  close
-                />
+                <WorkspaceLinks items={items} pathname={pathname} close />
               </SheetContent>
             </Sheet>
           </div>

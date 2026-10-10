@@ -2,30 +2,31 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const page = readFileSync("app/org/finance/page.tsx", "utf8");
+const finance = readFileSync("app/org/finance/page.tsx", "utf8");
+const verification = readFileSync("app/org/verification/page.tsx", "utf8");
 const navigation = readFileSync("app/lib/navigation.ts", "utf8");
 const shell = readFileSync("app/components/workspace-shell.tsx", "utf8");
 
-test("finance workspace separates funding and verification without changing canonical handlers", () => {
+test("finance and verification workspaces retain their canonical handlers", () => {
   for (const label of [
     "Allocation.*disbursement",
-    "Verification",
     "Reserve funds",
     "Record disbursement",
-    "Registered verifiers",
-    "Upload evidence",
   ]) {
-    assert.match(page, new RegExp(label));
+    assert.match(finance, new RegExp(label));
   }
-  assert.match(page, /createAllocationIx/);
-  assert.match(page, /recordDisbursementIx/);
-  assert.match(page, /verifyDeliveryIx/);
-  assert.match(page, /DataTable/);
+  assert.match(finance, /createAllocationIx/);
+  assert.match(finance, /recordDisbursementIx/);
+  assert.match(verification, /Delivery verifications/);
+  assert.match(verification, /Add evidence/);
+  assert.match(verification, /Inspect evidence/);
+  assert.match(verification, /disabled={!attached}/);
+  assert.match(verification, /verifyDeliveryIx/);
 });
 
 test("organization navigation keeps finance sections distinct and retains organization scope", () => {
   assert.match(navigation, /Allocation & disbursement/);
-  assert.match(navigation, /section=verification/);
-  assert.match(shell, /searchParams\.get\("organization"\)/);
-  assert.match(shell, /financeSection/);
+  assert.match(navigation, /\/org\/verification/);
+  assert.match(shell, /window\.location\.search/);
+  assert.match(shell, /org\/verification/);
 });

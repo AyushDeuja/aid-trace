@@ -71,8 +71,6 @@ function FinancePageClient() {
   const walletAddress = wallet?.account.address;
   const searchParams = useSearchParams();
   const requestedOrganization = searchParams.get("organization");
-  const section =
-    searchParams.get("section") === "verification" ? "verification" : "funds";
   const supported = cluster === "localnet" || cluster === "devnet";
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<Campaign | null>(null);
@@ -777,33 +775,7 @@ function FinancePageClient() {
               </div>
             )}
           </section>
-          <div
-            className="flex border-b border-border"
-            role="tablist"
-            aria-label="Finance sections"
-          >
-            <a
-              className={
-                section === "funds"
-                  ? "border-b-2 border-primary px-4 py-3 text-sm font-semibold text-primary"
-                  : "px-4 py-3 text-sm text-muted-foreground hover:text-foreground"
-              }
-              href={`/org/finance${requestedOrganization ? `?organization=${encodeURIComponent(requestedOrganization)}` : ""}`}
-            >
-              Allocation &amp; disbursement
-            </a>
-            <a
-              className={
-                section === "verification"
-                  ? "border-b-2 border-primary px-4 py-3 text-sm font-semibold text-primary"
-                  : "px-4 py-3 text-sm text-muted-foreground hover:text-foreground"
-              }
-              href={`/org/finance?section=verification${requestedOrganization ? `&organization=${encodeURIComponent(requestedOrganization)}` : ""}`}
-            >
-              Verification
-            </a>
-          </div>
-          {section === "funds" ? (
+          <div>
             <section className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -870,7 +842,8 @@ function FinancePageClient() {
                   : "Audit history is indexing; canonical campaign records remain available."}
               </p>
             </section>
-          ) : (
+          </div>
+          {false && (
             <section className="space-y-5">
               <div>
                 <h2 className="font-serif text-2xl font-semibold">

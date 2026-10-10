@@ -7,7 +7,6 @@ export type NavigationRoles = {
 export type NavigationItem = {
   href: string;
   label: string;
-  financeSection?: "funds" | "verification";
 };
 
 export type WorkspaceNavigation = "donor" | "organization" | "admin";
@@ -22,12 +21,10 @@ export const workspaceNavigation: Record<
     {
       href: "/org/finance",
       label: "Allocation & disbursement",
-      financeSection: "funds",
     },
     {
-      href: "/org/finance?section=verification",
+      href: "/org/verification",
       label: "Verification",
-      financeSection: "verification",
     },
     { href: "/org/disasters", label: "Disaster opportunities" },
   ],
