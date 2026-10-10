@@ -7,13 +7,6 @@ import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
@@ -240,14 +233,15 @@ export default function OrganizationDisastersPage() {
         headerClassName: "text-right",
         className: "text-right",
         cell: (c) => (
-          <div
-            className="flex justify-end gap-2"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div data-table-action className="flex justify-end gap-2">
             {c.status === "detected" && (
               <Button
+                type="button"
                 size="sm"
-                onClick={() => {
+                aria-haspopup="dialog"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
                   setRequesting(c);
                   setGoalSol("");
                 }}
@@ -264,6 +258,18 @@ export default function OrganizationDisastersPage() {
                 Open campaign <ExternalLink />
               </Button>
             )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                router.push(`/org/disasters/${c.id}`);
+              }}
+            >
+              Details
+            </Button>
           </div>
         ),
       },
@@ -308,45 +314,65 @@ export default function OrganizationDisastersPage() {
           rows={items}
           rowKey={(c) => c.id}
           loading={loading}
-          onRowClick={(c) => router.push(`/org/disasters/${c.id}`)}
           emptyMessage="No eligible disaster opportunities are available on this cluster."
         />
       )}
-      <Dialog
-        open={Boolean(requesting)}
-        onOpenChange={(open) => !open && setRequesting(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Request admin approval</DialogTitle>
-            <DialogDescription>
-              {requesting?.title}. Enter the campaign target in SOL; the server
-              converts it exactly to lamports.
-            </DialogDescription>
-          </DialogHeader>
-          <label className="mt-5 block text-sm font-medium">
-            Goal in SOL
-            <Input
-              className="mt-1.5"
-              inputMode="decimal"
-              placeholder="10"
-              value={goalSol}
-              onChange={(event) => setGoalSol(event.target.value)}
-            />
-          </label>
-          <div className="mt-5 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setRequesting(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!goalSol.trim()}
-              onClick={() => void requestCampaign()}
+      {requesting && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          role="presentation"
+        >
+          <button
+            type="button"
+            aria-label="Close request approval dialog"
+            className="absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+            onClick={() => setRequesting(null)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="request-approval-title"
+            className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-card p-6 text-card-foreground shadow-xl"
+          >
+            <h2
+              id="request-approval-title"
+              className="font-serif text-2xl font-semibold"
             >
               Request admin approval
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {requesting.title}. Enter the campaign target in SOL; the server
+              converts it exactly to lamports.
+            </p>
+            <label className="mt-5 block text-sm font-medium">
+              Goal in SOL
+              <Input
+                className="mt-1.5"
+                inputMode="decimal"
+                placeholder="10"
+                value={goalSol}
+                onChange={(event) => setGoalSol(event.target.value)}
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRequesting(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!goalSol.trim()}
+                onClick={() => void requestCampaign()}
+              >
+                Request admin approval
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

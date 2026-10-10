@@ -18,6 +18,12 @@ export type DataTableColumn<T> = {
   headerClassName?: string;
 };
 
+function isActionTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element && Boolean(target.closest("[data-table-action]"))
+  );
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -63,10 +69,13 @@ export function DataTable<T>({
               <TableRow
                 key={rowKey(row)}
                 tabIndex={onRowClick ? 0 : undefined}
-                onClick={() => onRowClick?.(row)}
+                onClick={(event) => {
+                  if (!isActionTarget(event.target)) onRowClick?.(row);
+                }}
                 onKeyDown={(event) => {
                   if (
                     onRowClick &&
+                    !isActionTarget(event.target) &&
                     (event.key === "Enter" || event.key === " ")
                   ) {
                     event.preventDefault();

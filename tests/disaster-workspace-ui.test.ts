@@ -15,6 +15,14 @@ test("disaster workspaces use the shared table with their valid actions", () => 
   assert.match(organization, /DataTable/);
   assert.match(organization, /Request admin approval/);
   assert.match(organization, /parseSolAmount/);
+  assert.match(organization, /aria-haspopup="dialog"/);
+  assert.match(organization, /event\.stopPropagation\(\)/);
+  assert.match(admin, /data-table-action/);
+  assert.match(organization, /data-table-action/);
+  assert.match(
+    readFileSync("components/data-table.tsx", "utf8"),
+    /\[data-table-action\]/
+  );
 });
 
 test("protected disaster detail preserves authorization and provenance", () => {

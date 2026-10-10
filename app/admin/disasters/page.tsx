@@ -45,10 +45,24 @@ type Candidate = {
   campaign_address?: string;
 };
 const b64 = (data: Uint8Array) => btoa(String.fromCharCode(...data));
-const shortError = (error: unknown, fallback: string) =>
-  /signature|rejected/i.test(error instanceof Error ? error.message : "")
-    ? "Wallet signature was rejected or expired."
-    : fallback;
+const shortError = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? error.message : "";
+  if (/signature|rejected/i.test(message))
+    return "Wallet signature was rejected or expired.";
+  if (
+    /OrganizationNotActive|organization is not active|verified and active|must be verified and active/i.test(
+      message
+    )
+  )
+    return "The organization must be verified and active first.";
+  if (/confirmation timed out/i.test(message))
+    return "Confirmation timed out. Refresh before retrying.";
+  if (/created but could not be linked/i.test(message))
+    return "Campaign created, but its link needs a refresh.";
+  if (/transaction failed/i.test(message))
+    return "Wallet transaction failed validation.";
+  return fallback;
+};
 const truncateWords = (value: string, limit = 5) => {
   const words = value.trim().split(/\s+/);
   return words.length > limit ? `${words.slice(0, limit).join(" ")}…` : value;
@@ -108,6 +122,7 @@ export default function DisasterReview() {
         throw new Error(body.error || "Could not load candidates");
       setItems(body);
     } catch (error) {
+      console.error("Disaster candidate loading failed", error);
       toast.error(
         shortError(
           error,
@@ -254,6 +269,7 @@ export default function DisasterReview() {
       setNote("");
       await load();
     } catch (error) {
+      console.error("Disaster review or campaign creation failed", error);
       toast.error(
         shortError(error, "Review could not be completed. Please try again."),
         { id }
@@ -282,6 +298,7 @@ export default function DisasterReview() {
       toast.success("Active disaster campaign created.", { id });
       await load();
     } catch (error) {
+      console.error("Disaster campaign creation retry failed", error);
       toast.error(
         shortError(error, "Campaign creation could not be completed."),
         { id }
@@ -353,23 +370,31 @@ export default function DisasterReview() {
       headerClassName: "text-right",
       className: "text-right",
       cell: (c) => (
-        <div
-          className="flex justify-end gap-2"
-          onClick={(event) => event.stopPropagation()}
-        >
+        <div data-table-action className="flex justify-end gap-2">
           {c.status === "requested" && (
             <>
               <Button
+                type="button"
                 size="sm"
                 disabled={isSending}
-                onClick={() => void decide(c, "approve")}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void decide(c, "approve");
+                }}
               >
                 <Check /> Approve & create
               </Button>
               <Button
+                type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => setRejecting(c)}
+                aria-haspopup="dialog"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setRejecting(c);
+                }}
               >
                 <X /> Reject
               </Button>
@@ -377,18 +402,28 @@ export default function DisasterReview() {
           )}
           {c.status === "approved" && (
             <Button
+              type="button"
               size="sm"
               disabled={isSending}
-              onClick={() => void retry(c)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void retry(c);
+              }}
             >
               Create active campaign
             </Button>
           )}
           {c.status === "activated" && c.campaign_address && (
             <Button
+              type="button"
               size="sm"
               variant="outline"
-              onClick={() => router.push(`/campaigns/${c.campaign_address}`)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                router.push(`/campaigns/${c.campaign_address}`);
+              }}
             >
               Open campaign
             </Button>
