@@ -24,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useViewerRole } from "../lib/hooks/use-viewer-role";
+import { resolveWorkspace, useViewerRole } from "../lib/hooks/use-viewer-role";
 import { donorView, publicView } from "../lib/navigation";
 import { useBalance } from "../lib/hooks/use-balance";
 import { lamportsToSolString } from "../lib/lamports";
@@ -40,6 +40,11 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
   const [copied, setCopied] = useState(false);
   const address = wallet?.account.address;
   const balance = useBalance(address);
+  const workspace = resolveWorkspace({
+    isConnected: Boolean(wallet),
+    isAdmin,
+    isOrganizationAuthority,
+  });
 
   const copyAddress = async () => {
     if (!address) return;
@@ -146,13 +151,15 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
               {publicView.label}
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href={donorView.href}>
-              <HeartHandshake />
-              {donorView.label}
-            </Link>
-          </DropdownMenuItem>
-          {isOrganizationAuthority ? (
+          {workspace === "donor" && !loading && (
+            <DropdownMenuItem asChild>
+              <Link href={donorView.href}>
+                <HeartHandshake />
+                {donorView.label}
+              </Link>
+            </DropdownMenuItem>
+          )}
+          {isOrganizationAuthority && !loading ? (
             <DropdownMenuItem asChild>
               <Link href="/org">
                 <Building2 />
@@ -165,7 +172,7 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
               Organization view {loading ? "(checking…)" : "(unavailable)"}
             </DropdownMenuItem>
           )}
-          {isAdmin && (
+          {isAdmin && !loading && (
             <DropdownMenuItem asChild>
               <Link href="/admin/review">
                 <ShieldCheck />
@@ -174,7 +181,7 @@ export function WalletButton({ compact = false }: { compact?: boolean }) {
             </DropdownMenuItem>
           )}
         </DropdownMenuGroup>
-        {isAdmin && (
+        {isAdmin && !loading && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuLabel>Admin tools</DropdownMenuLabel>

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Database, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCluster } from "./components/cluster-context";
@@ -13,13 +14,30 @@ import {
 import { EmptyCampaigns } from "./components/landing/empty-campaigns";
 import { Eyebrow, LiveFundPath, Metric } from "./components/landing/primitives";
 import { listCampaigns } from "./lib/campaigns/chain";
+import { resolveWorkspace, useViewerRole } from "./lib/hooks/use-viewer-role";
+import { useWallet } from "./lib/wallet/context";
 
 type CampaignLoadState = "loading" | "ready" | "unavailable";
 
 export default function Home() {
   const { cluster } = useCluster();
+  const { wallet } = useWallet();
+  const role = useViewerRole();
+  const router = useRouter();
   const [campaigns, setCampaigns] = useState<LandingCampaign[]>([]);
   const [loadState, setLoadState] = useState<CampaignLoadState>("loading");
+
+  useEffect(() => {
+    if (!wallet || role.loading) return;
+    const workspace = resolveWorkspace({ isConnected: true, ...role });
+    router.replace(
+      workspace === "admin"
+        ? "/admin/review"
+        : workspace === "organization"
+          ? "/org"
+          : "/dashboard"
+    );
+  }, [role, router, wallet]);
 
   const loadCampaigns = useCallback(async () => {
     if (cluster !== "devnet" && cluster !== "localnet") {
