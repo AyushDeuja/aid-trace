@@ -7,6 +7,7 @@ import {
   Check,
   ExternalLink,
   FileUp,
+  RefreshCw,
   Search,
   ShieldCheck,
   X,
@@ -25,11 +26,9 @@ import {
 import { listCampaigns, type Campaign } from "../../lib/campaigns/chain";
 import {
   deliveryVerificationPda,
-  listAllocations,
-  listDeliveryVerifications,
-  listDisbursements,
+  fetchFinanceSnapshot,
+  invalidateFinanceReadCache,
   listVerifierRecordsForWallet,
-  listVerifiers,
   registerVerifierIx,
   revokeVerifierIx,
   verifyDeliveryIx,
@@ -38,6 +37,10 @@ import {
   type Disbursement,
   type Verifier,
 } from "../../lib/finance/chain";
+import {
+  evidenceReviewBadgeVariant,
+  evidenceReviewStatus,
+} from "../../lib/finance/evidence-status";
 
 type EvidenceAttachment = {
   uri: string;
@@ -54,8 +57,11 @@ type Filter = "Pending" | "Verified" | "Disputed" | "Rejected";
 const shortAddress = (value: string) =>
   value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value;
 
-function verificationState(item: Disbursement): Filter {
-  return item.status === "Recorded" ? "Pending" : item.status;
+function verificationState(
+  item: Disbursement,
+  hasEvidence: boolean
+): "Missing evidence" | Filter {
+  return evidenceReviewStatus(item, hasEvidence);
 }
 
 function VerificationPageClient() {
@@ -83,9 +89,19 @@ function VerificationPageClient() {
   } | null>(null);
   const [filter, setFilter] = useState<Filter>("Pending");
   const [inspecting, setInspecting] = useState<Disbursement | null>(null);
+  const [verifierModalOpen, setVerifierModalOpen] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [signature, setSignature] = useState("");
+
+  const retryRefresh = () => {
+    void refresh().catch(() => {
+      setMessage(
+        "Canonical verification data is temporarily unavailable. Please retry."
+      );
+      toast.error("Could not refresh verification records.");
+    });
+  };
 
   const refresh = useCallback(async () => {
     if (!supported || !walletAddress) return;
@@ -127,27 +143,20 @@ function VerificationPageClient() {
       setDisbursements([]);
       return;
     }
-    const [nextAllocations, nextDisbursements, nextVerifiers, historyResponse] =
-      await Promise.all([
-        listAllocations(cluster, current.address),
-        listDisbursements(cluster, current.address),
-        listVerifiers(cluster, current.organization),
-        fetch(`/api/finance/history?campaign=${current.address}`),
-      ]);
-    setAllocations(nextAllocations);
-    setDisbursements(nextDisbursements);
-    setVerifiers(nextVerifiers);
-    setHistory(historyResponse.ok ? await historyResponse.json() : null);
-    setVerifications(
-      Object.fromEntries(
-        await Promise.all(
-          nextDisbursements.map(async (item) => [
-            item.address,
-            await listDeliveryVerifications(cluster, item.address),
-          ])
-        )
-      )
-    );
+    const [snapshot, historyResponse] = await Promise.all([
+      fetchFinanceSnapshot(cluster, current.address, current.organization),
+      fetch(`/api/finance/history?campaign=${current.address}`).catch(
+        () => null
+      ),
+    ]);
+    setAllocations(snapshot.allocations);
+    setDisbursements(snapshot.disbursements);
+    setVerifiers(snapshot.verifiers);
+    setVerifications(snapshot.verifications);
+    if (historyResponse?.ok) setHistory(await historyResponse.json());
+    else {
+      toast.warning("Evidence history is temporarily unavailable.");
+    }
   }, [
     cluster,
     requestedOrganization,
@@ -159,19 +168,34 @@ function VerificationPageClient() {
   useEffect(() => {
     const timer = window.setTimeout(
       () =>
-        void refresh().catch(() =>
-          setMessage("Could not load canonical verification records.")
-        ),
+        void refresh().catch((error) => {
+          const busy =
+            error instanceof Error &&
+            /temporarily busy|429/i.test(error.message);
+          setMessage(
+            busy
+              ? "Solana is temporarily busy. Your last confirmed records remain visible."
+              : "Canonical verification data is temporarily unavailable. Please retry."
+          );
+          toast.error(
+            busy
+              ? "Solana is busy; please retry shortly."
+              : "Could not refresh verification records."
+          );
+        }),
       0
     );
     return () => window.clearTimeout(timer);
   }, [refresh]);
 
-  const evidenceFor = (disbursement: Address) =>
-    evidence[disbursement] ||
-    (history?.evidence || []).find(
-      (item) => item.account_address === disbursement
-    );
+  const evidenceFor = useCallback(
+    (disbursement: Address) =>
+      evidence[disbursement] ||
+      (history?.evidence || []).find(
+        (item) => item.account_address === disbursement
+      ),
+    [evidence, history]
+  );
   const canManage =
     !!selected &&
     selected.authority === walletAddress &&
@@ -180,8 +204,12 @@ function VerificationPageClient() {
     !!walletAddress &&
     verifiers.some((item) => item.active && item.verifier === walletAddress);
   const visible = useMemo(
-    () => disbursements.filter((item) => verificationState(item) === filter),
-    [disbursements, filter]
+    () =>
+      disbursements.filter(
+        (item) =>
+          verificationState(item, !!evidenceFor(item.address)) === filter
+      ),
+    [disbursements, evidenceFor, filter]
   );
   const counts = useMemo(
     () =>
@@ -189,12 +217,14 @@ function VerificationPageClient() {
         (["Pending", "Verified", "Disputed", "Rejected"] as Filter[]).map(
           (state) => [
             state,
-            disbursements.filter((item) => verificationState(item) === state)
-              .length,
+            disbursements.filter(
+              (item) =>
+                verificationState(item, !!evidenceFor(item.address)) === state
+            ).length,
           ]
         )
       ) as Record<Filter, number>,
-    [disbursements]
+    [disbursements, evidenceFor]
   );
 
   const transact = async (
@@ -207,6 +237,7 @@ function VerificationPageClient() {
       setSignature(nextSignature);
       if (after) await after(nextSignature);
       toast.success("Transaction confirmed on Solana.");
+      invalidateFinanceReadCache(cluster);
       await refresh();
     } catch (error) {
       const nextMessage =
@@ -245,6 +276,7 @@ function VerificationPageClient() {
         );
       setEvidence((current) => ({ ...current, [disbursement.address]: body }));
       toast.success("Evidence uploaded and digest linked.");
+      invalidateFinanceReadCache(cluster);
       await refresh();
     } catch (error) {
       setMessage(
@@ -321,6 +353,7 @@ function VerificationPageClient() {
       )
     );
     setVerifierWallet("");
+    setVerifierModalOpen(false);
   };
 
   return (
@@ -335,6 +368,15 @@ function VerificationPageClient() {
         <p className="mt-3 text-muted-foreground">
           Human-reviewed proof that campaign funds became aid.
         </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-4"
+          onClick={retryRefresh}
+        >
+          <RefreshCw /> Refresh canonical data
+        </Button>
       </header>
       {!supported && (
         <p
@@ -378,53 +420,49 @@ function VerificationPageClient() {
       )}
       {selected && (
         <>
-          <label className="block max-w-2xl text-sm font-medium">
-            Campaign
-            <select
-              className="mt-2 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-              value={selected.address}
-              onChange={(event) =>
-                setSelected(
-                  campaigns.find(
-                    (campaign) => campaign.address === event.target.value
-                  ) || null
-                )
-              }
-            >
-              {campaigns.map((campaign) => (
-                <option key={campaign.address} value={campaign.address}>
-                  Campaign #{campaign.campaignId.toString()} · {campaign.status}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex max-w-3xl flex-wrap items-end gap-3">
+            <label className="min-w-64 flex-1 text-sm font-medium">
+              Campaign
+              <select
+                className="mt-2 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                value={selected.address}
+                onChange={(event) =>
+                  setSelected(
+                    campaigns.find(
+                      (campaign) => campaign.address === event.target.value
+                    ) || null
+                  )
+                }
+              >
+                {campaigns.map((campaign) => (
+                  <option key={campaign.address} value={campaign.address}>
+                    Campaign #{campaign.campaignId.toString()} ·{" "}
+                    {campaign.status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canManage && (
+              <Button
+                type="button"
+                className="mb-0.5"
+                onClick={() => setVerifierModalOpen(true)}
+              >
+                <ShieldCheck /> Register verifier
+              </Button>
+            )}
+          </div>
           {canManage && (
-            <section className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="size-5 text-primary" />
-                <h2 className="font-semibold">Registered verifiers</h2>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Input
-                  className="min-w-60 flex-1"
-                  placeholder="Verifier wallet address"
-                  value={verifierWallet}
-                  onChange={(event) => setVerifierWallet(event.target.value)}
-                />
-                <Button
-                  type="button"
-                  disabled={isSending || !verifierWallet}
-                  onClick={registerVerifier}
-                >
-                  Register verifier
-                </Button>
-              </div>
-              <div className="mt-4 space-y-2">
+            <section className="max-w-3xl border-b border-border pb-5">
+              <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                Registered verifiers
+              </p>
+              <div className="space-y-2">
                 {verifiers.length ? (
                   verifiers.map((item) => (
                     <div
                       key={item.address}
-                      className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm"
                     >
                       <span className="font-mono">
                         {shortAddress(item.verifier)}
@@ -457,7 +495,7 @@ function VerificationPageClient() {
                   ))
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    No verifier is registered.
+                    No verifier is registered for this organization.
                   </p>
                 )}
               </div>
@@ -507,15 +545,11 @@ function VerificationPageClient() {
                       </p>
                     </div>
                     <Badge
-                      variant={
-                        verificationState(item) === "Verified"
-                          ? "verified"
-                          : verificationState(item) === "Pending"
-                            ? "warning"
-                            : "outline"
-                      }
+                      variant={evidenceReviewBadgeVariant(
+                        verificationState(item, !!attached)
+                      )}
                     >
-                      {verificationState(item)}
+                      {verificationState(item, !!attached)}
                     </Badge>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2">
@@ -573,6 +607,72 @@ function VerificationPageClient() {
             </p>
           )}
         </>
+      )}
+      {verifierModalOpen && selected && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            aria-label="Close register verifier dialog"
+            onClick={() => setVerifierModalOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="register-verifier-title"
+            className="relative z-10 w-full rounded-xl border border-border bg-card p-6 shadow-xl"
+            style={{ maxWidth: "30rem" }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2
+                  id="register-verifier-title"
+                  className="font-serif text-2xl font-semibold"
+                >
+                  Register verifier
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add a wallet that can review digest-linked delivery evidence.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Close"
+                onClick={() => setVerifierModalOpen(false)}
+              >
+                <X />
+              </Button>
+            </div>
+            <label className="mt-5 block text-sm font-medium">
+              Verifier wallet address
+              <Input
+                className="mt-2"
+                autoFocus
+                placeholder="Enter Solana wallet address"
+                value={verifierWallet}
+                onChange={(event) => setVerifierWallet(event.target.value)}
+              />
+            </label>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVerifierModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isSending || !verifierWallet}
+                onClick={registerVerifier}
+              >
+                Register verifier
+              </Button>
+            </div>
+          </section>
+        </div>
       )}
       {inspecting &&
         (() => {

@@ -22,6 +22,10 @@ test("finance and verification workspaces retain their canonical handlers", () =
   assert.match(verification, /Inspect evidence/);
   assert.match(verification, /disabled={!attached}/);
   assert.match(verification, /verifyDeliveryIx/);
+  assert.match(verification, /fetchFinanceSnapshot/);
+  assert.match(finance, /fetchFinanceSnapshot/);
+  assert.doesNotMatch(verification, /nextDisbursements\.map/);
+  assert.doesNotMatch(finance, /nextDisbursements\.map/);
 });
 
 test("organization navigation keeps finance sections distinct and retains organization scope", () => {

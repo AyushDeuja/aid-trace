@@ -195,16 +195,52 @@ export async function rpcCall<T>(
   method: string,
   params: unknown[]
 ): Promise<T> {
-  const response = await fetch(getClusterUrl(cluster), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  if (!response.ok) throw new Error(`Solana RPC failed: ${response.status}`);
-  const payload = await response.json();
-  if (payload.error)
-    throw new Error(payload.error.message || "Solana RPC error");
-  return payload.result as T;
+  // Only retry idempotent reads. Wallet transactions are submitted elsewhere
+  // and must never be retried automatically.
+  const canRetry = method.startsWith("get") || method === "getProgramAccounts";
+  const attempts = canRetry ? 3 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(getClusterUrl(cluster), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        if (payload.error)
+          throw new Error(payload.error.message || "Solana RPC error");
+        return payload.result as T;
+      }
+      if (response.status !== 429 || attempt === attempts - 1)
+        throw new Error(
+          response.status === 429
+            ? "Solana RPC is temporarily busy. Please retry shortly."
+            : `Solana RPC failed: ${response.status}`
+        );
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const delay = Number.isFinite(retryAfter)
+        ? retryAfter * 1000
+        : 300 * 2 ** attempt + Math.floor(Math.random() * 150);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    } catch (error) {
+      lastError = error;
+      // A fetch TypeError is a transport failure. Program/RPC payload errors
+      // and non-429 HTTP responses are meaningful and should surface directly.
+      if (attempt === attempts - 1 || !(error instanceof TypeError))
+        throw error;
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          300 * 2 ** attempt + Math.floor(Math.random() * 150)
+        )
+      );
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Solana RPC is temporarily unavailable. Please retry shortly.");
 }
 export async function fetchOrganization(
   cluster: ClusterMoniker,

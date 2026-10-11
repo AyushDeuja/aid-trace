@@ -24,11 +24,9 @@ import {
   createAllocationIx,
   disbursementPda,
   deliveryVerificationPda,
-  listAllocations,
-  listDisbursements,
-  listDeliveryVerifications,
+  fetchFinanceSnapshot,
+  invalidateFinanceReadCache,
   listVerifierRecordsForWallet,
-  listVerifiers,
   recordDisbursementIx,
   registerVerifierIx,
   revokeVerifierIx,
@@ -38,6 +36,10 @@ import {
   type DeliveryVerification,
   type Verifier,
 } from "../../lib/finance/chain";
+import {
+  evidenceReviewBadgeVariant,
+  evidenceReviewStatus,
+} from "../../lib/finance/evidence-status";
 
 const LAMPORTS = 1_000_000_000n;
 type EvidenceAttachment = {
@@ -108,6 +110,15 @@ function FinancePageClient() {
   const [disbursementAllocation, setDisbursementAllocation] =
     useState<Allocation | null>(null);
 
+  const retryRefresh = () => {
+    void refresh().catch(() => {
+      setMessage(
+        "Canonical finance data is temporarily unavailable. Please retry."
+      );
+      toast.error("Could not refresh finance records.");
+    });
+  };
+
   const refresh = useCallback(async () => {
     if (!supported || !walletAddress) return;
     let org = await fetchOrganization(
@@ -143,29 +154,20 @@ function FinancePageClient() {
       null;
     setSelected(current);
     if (current) {
-      const [nextAllocations, nextDisbursements, nextVerifiers] =
-        await Promise.all([
-          listAllocations(cluster, current.address),
-          listDisbursements(cluster, current.address),
-          listVerifiers(cluster, current.organization),
-        ]);
-      setAllocations(nextAllocations);
-      setDisbursements(nextDisbursements);
-      setVerifiers(nextVerifiers);
-      setVerifications(
-        Object.fromEntries(
-          await Promise.all(
-            nextDisbursements.map(async (item) => [
-              item.address,
-              await listDeliveryVerifications(cluster, item.address),
-            ])
-          )
-        )
-      );
-      const response = await fetch(
-        `/api/finance/history?campaign=${current.address}`
-      );
-      setHistory(response.ok ? await response.json() : null);
+      const [snapshot, response] = await Promise.all([
+        fetchFinanceSnapshot(cluster, current.address, current.organization),
+        fetch(`/api/finance/history?campaign=${current.address}`).catch(
+          () => null
+        ),
+      ]);
+      setAllocations(snapshot.allocations);
+      setDisbursements(snapshot.disbursements);
+      setVerifiers(snapshot.verifiers);
+      setVerifications(snapshot.verifications);
+      if (response?.ok) setHistory(await response.json());
+      else {
+        toast.warning("Evidence history is temporarily unavailable.");
+      }
     } else {
       setAllocations([]);
       setDisbursements([]);
@@ -182,11 +184,20 @@ function FinancePageClient() {
     // Start asynchronous chain reads after this render commits. This avoids a
     // synchronous state cascade while retaining refresh-on-wallet/network change.
     const timer = window.setTimeout(() => {
-      void refresh().catch((error) =>
+      void refresh().catch((error) => {
+        const busy =
+          error instanceof Error && /temporarily busy|429/i.test(error.message);
         setMessage(
-          error instanceof Error ? error.message : "Could not load finance data"
-        )
-      );
+          busy
+            ? "Solana is temporarily busy. Your last confirmed records remain visible."
+            : "Canonical finance data is temporarily unavailable. Please retry."
+        );
+        toast.error(
+          busy
+            ? "Solana is busy; please retry shortly."
+            : "Could not refresh finance records."
+        );
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [refresh]);
@@ -203,12 +214,13 @@ function FinancePageClient() {
     setStage("Preparing");
     try {
       const instruction = await build();
-      setStage("Awaiting wallet signature");
+      setStage("Opening wallet approval");
       const next = await send({ instructions: [instruction] });
       setSignature(next);
       if (after) await after(next);
       setStage("Confirmed on Solana");
       toast.success("Transaction confirmed on Solana.");
+      invalidateFinanceReadCache(cluster);
       await refresh();
     } catch (error) {
       setStage("Failed");
@@ -383,6 +395,7 @@ function FinancePageClient() {
           );
       });
       setEvidence((current) => ({ ...current, [disbursement.address]: body }));
+      invalidateFinanceReadCache(cluster);
       setMessage(
         "Evidence uploaded and digest verified. A registered verifier can now decide."
       );
@@ -593,12 +606,15 @@ function FinancePageClient() {
     {
       key: "evidence",
       header: "Evidence",
-      cell: (item) =>
-        evidenceFor(item.address) ? (
-          <Badge variant="verified">Digest linked</Badge>
-        ) : (
-          <Badge variant="warning">Missing</Badge>
-        ),
+      cell: (item) => (
+        <Badge
+          variant={evidenceReviewBadgeVariant(
+            evidenceReviewStatus(item, !!evidenceFor(item.address))
+          )}
+        >
+          {evidenceReviewStatus(item, !!evidenceFor(item.address))}
+        </Badge>
+      ),
     },
     {
       key: "status",
@@ -679,7 +695,7 @@ function FinancePageClient() {
           type="button"
           variant="outline"
           disabled={!walletAddress}
-          onClick={() => void refresh()}
+          onClick={retryRefresh}
         >
           <RefreshCw /> Refresh canonical data
         </Button>

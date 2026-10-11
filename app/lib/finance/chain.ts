@@ -459,7 +459,10 @@ export async function decodeDeliveryVerification(
   };
 }
 async function programAccounts(cluster: ClusterMoniker) {
-  return rpcCall<
+  const cacheKey = cluster;
+  const existing = programAccountsCache.get(cacheKey);
+  if (existing && existing.expiresAt > Date.now()) return existing.promise;
+  const promise = rpcCall<
     Array<{
       pubkey: string;
       account: { owner: string; data: [string, string] };
@@ -468,6 +471,125 @@ async function programAccounts(cluster: ClusterMoniker) {
     PROGRAM_ID,
     { encoding: "base64", commitment: "confirmed" },
   ]);
+  programAccountsCache.set(cacheKey, {
+    promise,
+    expiresAt: Date.now() + 5_000,
+  });
+  try {
+    return await promise;
+  } catch (error) {
+    programAccountsCache.delete(cacheKey);
+    throw error;
+  }
+}
+
+type ProgramAccount = {
+  pubkey: string;
+  account: { owner: string; data: [string, string] };
+};
+const programAccountsCache = new Map<
+  string,
+  { promise: Promise<ProgramAccount[]>; expiresAt: number }
+>();
+const financeSnapshotCache = new Map<
+  string,
+  { promise: Promise<FinanceSnapshot>; expiresAt: number }
+>();
+
+export type FinanceSnapshot = {
+  allocations: Allocation[];
+  disbursements: Disbursement[];
+  verifiers: Verifier[];
+  verifications: Record<string, DeliveryVerification[]>;
+};
+
+/** Clears short-lived canonical read caches after an on-chain finance change. */
+export function invalidateFinanceReadCache(cluster?: ClusterMoniker) {
+  if (!cluster) {
+    programAccountsCache.clear();
+    financeSnapshotCache.clear();
+    return;
+  }
+  programAccountsCache.delete(cluster);
+  for (const key of financeSnapshotCache.keys())
+    if (key.startsWith(`${cluster}:`)) financeSnapshotCache.delete(key);
+}
+
+/**
+ * Decodes all finance account kinds from one canonical program scan. This
+ * avoids an RPC call for each list and each individual disbursement.
+ */
+export async function fetchFinanceSnapshot(
+  cluster: ClusterMoniker,
+  campaign: Address,
+  organization: Address
+): Promise<FinanceSnapshot> {
+  const cacheKey = `${cluster}:${campaign}:${organization}`;
+  const existing = financeSnapshotCache.get(cacheKey);
+  if (existing && existing.expiresAt > Date.now()) return existing.promise;
+  const promise = (async () => {
+    const accounts = await programAccounts(cluster);
+    const allocations: Allocation[] = [];
+    const disbursements: Disbursement[] = [];
+    const verifiers: Verifier[] = [];
+    const deliveries: DeliveryVerification[] = [];
+    for (const item of accounts) {
+      if (item.account.owner !== PROGRAM_ID) continue;
+      const key = address(item.pubkey);
+      const raw = Uint8Array.from(atob(item.account.data[0]), (c) =>
+        c.charCodeAt(0)
+      );
+      try {
+        const value = await decodeAllocation(key, raw);
+        if (value.campaign === campaign) allocations.push(value);
+        continue;
+      } catch {}
+      try {
+        const value = await decodeDisbursement(key, raw);
+        if (value.campaign === campaign) disbursements.push(value);
+        continue;
+      } catch {}
+      try {
+        const value = await decodeVerifier(key, raw);
+        if (value.organization === organization) verifiers.push(value);
+        continue;
+      } catch {}
+      try {
+        const value = await decodeDeliveryVerification(key, raw);
+        deliveries.push(value);
+      } catch {}
+    }
+    const disbursementAddresses = new Set(
+      disbursements.map((item) => item.address)
+    );
+    const verifications: Record<string, DeliveryVerification[]> = {};
+    for (const value of deliveries) {
+      if (!disbursementAddresses.has(value.disbursement)) continue;
+      (verifications[value.disbursement] ||= []).push(value);
+    }
+    for (const values of Object.values(verifications))
+      values.sort((a, b) => Number(a.verificationId - b.verificationId));
+    return {
+      allocations: allocations.sort((a, b) =>
+        Number(a.allocationId - b.allocationId)
+      ),
+      disbursements: disbursements.sort((a, b) =>
+        Number(a.disbursementId - b.disbursementId)
+      ),
+      verifiers: verifiers.sort((a, b) => a.verifier.localeCompare(b.verifier)),
+      verifications,
+    };
+  })();
+  financeSnapshotCache.set(cacheKey, {
+    promise,
+    expiresAt: Date.now() + 5_000,
+  });
+  try {
+    return await promise;
+  } catch (error) {
+    financeSnapshotCache.delete(cacheKey);
+    throw error;
+  }
 }
 export async function listAllocations(
   cluster: ClusterMoniker,
