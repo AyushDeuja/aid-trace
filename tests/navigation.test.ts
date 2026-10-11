@@ -74,7 +74,8 @@ test("donor and combined roles receive the correct non-duplicated tabs", () => {
   assert.equal(hrefs.includes("/admin/review"), false);
   assert.equal(hrefs.includes("/dashboard"), false);
   assert.deepEqual(workspaceNavigation.donor, [
-    { href: "/dashboard", label: "My donations" },
+    { href: "/dashboard", label: "Overview" },
+    { href: "/dashboard/donations", label: "My donations" },
   ]);
   assert.equal(
     resolveWorkspace({
@@ -95,4 +96,9 @@ test("navbar has a single scrollable row without a sheet menu", () => {
   const source = readFileSync("app/components/app-navbar.tsx", "utf8");
   assert.match(source, /overflow-x-auto/);
   assert.doesNotMatch(source, /Sheet|Menu/);
+});
+
+test("donor overview does not remain active on donation history", () => {
+  const shell = readFileSync("app/components/workspace-shell.tsx", "utf8");
+  assert.match(shell, /hrefPath !== "\/dashboard"/);
 });

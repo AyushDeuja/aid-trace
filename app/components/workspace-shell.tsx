@@ -43,7 +43,9 @@ function isActive(pathname: string, item: NavigationItem) {
   const hrefPath = item.href.split("?")[0];
   return (
     pathname === hrefPath ||
-    (hrefPath !== "/org" && pathname.startsWith(`${hrefPath}/`))
+    (hrefPath !== "/org" &&
+      hrefPath !== "/dashboard" &&
+      pathname.startsWith(`${hrefPath}/`))
   );
 }
 

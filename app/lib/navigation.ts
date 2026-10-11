@@ -15,7 +15,10 @@ export const workspaceNavigation: Record<
   WorkspaceNavigation,
   NavigationItem[]
 > = {
-  donor: [{ href: "/dashboard", label: "My donations" }],
+  donor: [
+    { href: "/dashboard", label: "Overview" },
+    { href: "/dashboard/donations", label: "My donations" },
+  ],
   organization: [
     { href: "/org", label: "Organization profile" },
     {
