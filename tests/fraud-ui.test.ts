@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   isFraudCluster,
   parseFindings,
@@ -39,4 +40,22 @@ test("fraud UI parser rejects malformed service payloads and unsupported cluster
   );
   assert.equal(isFraudCluster("devnet"), true);
   assert.equal(isFraudCluster("mainnet"), false);
+});
+
+test("fraud workspace maps human actions to persisted advisory dispositions", () => {
+  const page = readFileSync("app/admin/fraud/page.tsx", "utf8");
+  assert.match(
+    page,
+    /Dismiss[\s\S]*false_positive|false_positive[\s\S]*Dismiss/
+  );
+  assert.match(
+    page,
+    /Monitor[\s\S]*needs_investigation|needs_investigation[\s\S]*Monitor/
+  );
+  assert.match(
+    page,
+    /Escalate[\s\S]*confirmed_fraud|confirmed_fraud[\s\S]*Escalate/
+  );
+  assert.match(page, /Inspect/);
+  assert.match(page, /Trust operations diagnostics/);
 });
