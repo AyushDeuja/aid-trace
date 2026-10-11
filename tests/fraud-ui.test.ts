@@ -57,5 +57,5 @@ test("fraud workspace maps human actions to persisted advisory dispositions", ()
     /Escalate[\s\S]*confirmed_fraud|confirmed_fraud[\s\S]*Escalate/
   );
   assert.match(page, /Inspect/);
-  assert.match(page, /Trust operations diagnostics/);
+  assert.match(page, /operationAddress/);
 });
