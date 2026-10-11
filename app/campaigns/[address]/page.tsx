@@ -226,7 +226,7 @@ export default function CampaignDetailPage() {
             ].map(([label, value]) => (
               <div
                 key={String(label)}
-                className="border-l-2 border-primary pl-3"
+                className="border-l-2 border-primary py-1 pl-5"
               >
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="mt-1 font-serif text-2xl font-semibold">
@@ -400,7 +400,7 @@ export default function CampaignDetailPage() {
                 style={{ width: `${progress}%` }}
               />
             </div>
-            {walletAddress && !isAuthority && !isAdmin && (
+            {walletAddress && (
               <div className="mt-5 space-y-2 border-t border-border pt-4">
                 <label className="text-sm font-medium">Donate SOL</label>
                 <Input
