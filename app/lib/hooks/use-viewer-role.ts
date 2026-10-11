@@ -18,6 +18,20 @@ export type ViewerRole = {
 
 export type Workspace = "public" | "donor" | "organization" | "admin";
 
+/** The single landing route for each canonical workspace role. */
+export function workspaceHome(workspace: Workspace): string {
+  switch (workspace) {
+    case "admin":
+      return "/admin/review";
+    case "organization":
+      return "/org";
+    case "donor":
+      return "/dashboard";
+    case "public":
+      return "/";
+  }
+}
+
 const publicRole: ViewerRole = {
   isAdmin: false,
   isOrganizationAuthority: false,

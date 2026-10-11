@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -13,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useCluster } from "../../components/cluster-context";
 import { useWallet } from "../../lib/wallet/context";
 import { useSendTransaction } from "../../lib/hooks/use-send-transaction";
+import { useBalance } from "../../lib/hooks/use-balance";
 import {
   fetchAdmin,
   fetchOrganization,
@@ -55,6 +55,9 @@ export default function CampaignDetailPage() {
   const { wallet } = useWallet();
   const { send, isSending } = useSendTransaction();
   const walletAddress = wallet?.account.address;
+  const balance = useBalance(
+    walletAddress ? address(walletAddress) : undefined
+  );
   const [view, setView] = useState<CampaignPresentation | null>(null);
   const [vault, setVault] = useState("");
   const [admin, setAdmin] = useState<string | null>(null);
@@ -196,6 +199,29 @@ export default function CampaignDetailPage() {
   const isAuthority = Boolean(walletAddress && walletAddress === orgAuthority);
   const isAdmin = Boolean(walletAddress && walletAddress === admin);
   const progress = campaign ? campaignProgress(campaign) : 0;
+  const donate = async () => {
+    if (!walletAddress || !campaign) return;
+    try {
+      const donationAmount = parseSolAmount(amount);
+      // The donor pays the transaction fee and rent for the new Donation PDA.
+      // Leave a small conservative margin so a wallet cannot sign a transfer
+      // which will fail after account creation.
+      const required = donationAmount + 2_000_000n;
+      if (balance.lamports !== null && BigInt(balance.lamports) < required) {
+        throw new Error(
+          `Insufficient SOL. This donation needs ${displaySol(required)} SOL including the transaction fee and donation-record rent.`
+        );
+      }
+      await transact(
+        () => donateIx(campaign, address(walletAddress), donationAmount),
+        "Donation confirmed"
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not prepare donation"
+      );
+    }
+  };
   if (loading)
     return (
       <main className="px-6 py-10">
@@ -414,17 +440,7 @@ export default function CampaignDetailPage() {
                   disabled={
                     isSending || !amount || campaign.status !== "Active"
                   }
-                  onClick={() =>
-                    void transact(
-                      () =>
-                        donateIx(
-                          campaign,
-                          address(walletAddress),
-                          parseSolAmount(amount)
-                        ),
-                      "Donation confirmed"
-                    )
-                  }
+                  onClick={() => void donate()}
                 >
                   Donate with wallet
                 </Button>

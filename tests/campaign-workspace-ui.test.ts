@@ -36,5 +36,7 @@ test("campaign detail keeps role-aware canonical funding and management controls
   assert.match(viewModel, /campaignAvailable/);
   assert.match(detail, /\{walletAddress && \(/);
   assert.doesNotMatch(detail, /walletAddress && !isAuthority && !isAdmin/);
+  assert.match(detail, /Insufficient SOL/);
+  assert.match(detail, /2_000_000n/);
   assert.match(trustPanel, /text-foreground\/70/);
 });
