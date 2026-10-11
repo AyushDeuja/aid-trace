@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ChevronDown,
@@ -545,153 +546,142 @@ export default function FraudDashboard() {
             </section>
           </>
         )}
-
-        {roleState === "allowed" && roles.trustAuthority && (
-          <details className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-            <summary className="cursor-pointer font-serif text-xl font-semibold">
-              Trust operations diagnostics
-            </summary>
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              Restricted diagnostics for the configured trust authority. No
-              credentials or worker secrets are displayed.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Input
-                className="min-w-64 flex-1"
-                placeholder="Campaign address"
-                value={operationAddress}
-                onChange={(event) =>
-                  setOperationAddress(event.target.value.trim())
-                }
-              />
-              <Button
-                variant="outline"
-                disabled={!operationAddress}
-                onClick={() => void loadOperation()}
-              >
-                Load operation
-              </Button>
-            </div>
-            {operation && (
-              <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-                <div>Status: {operation.status}</div>
-                <div>Attempts: {operation.attempts}/8</div>
-                <div>
-                  Expected sequence:{" "}
-                  {operation.expected_sequence ?? "not assigned"}
-                </div>
-                <div>Outcome: {operation.action_outcome || "not checked"}</div>
-                <div>ER signature: {operation.er_signature || "pending"}</div>
-                <div>
-                  Base signature: {operation.base_commit_signature || "pending"}
-                </div>
-              </dl>
-            )}
-          </details>
-        )}
       </div>
 
-      {subject && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="subject-title"
-        >
-          <section className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">
-                  Immutable subject snapshot
-                </p>
-                <h2
-                  id="subject-title"
-                  className="mt-1 break-all font-serif text-2xl font-semibold"
-                >
-                  {subject.subject_address}
-                </h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Close subject details"
-                onClick={() => setSubject(null)}
-              >
-                ×
-              </Button>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <p>
-                Score <strong>{subject.score}/100</strong>
-              </p>
-              <p>
-                Risk band{" "}
-                <strong className="capitalize">{subject.risk_band}</strong>
-              </p>
-              <p>
-                Model <strong>{subject.model_version}</strong>
-              </p>
-              <p>
-                Finalized slot <strong>{subject.checkpoint_slot}</strong>
-              </p>
-            </div>
-            {subject.checkpoint_signature && (
-              <a
-                className="mt-3 inline-flex items-center gap-1 text-sm underline"
-                href={getExplorerUrl(`/tx/${subject.checkpoint_signature}`)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View finalized checkpoint <ExternalLink className="size-3" />
-              </a>
-            )}
-            <section className="mt-6">
-              <h3 className="font-serif text-xl font-semibold">
-                Explainable reasons
-              </h3>
-              <ul className="mt-3 space-y-3">
-                {subject.reasons.map((reason) => (
-                  <li
-                    key={reason.code}
-                    className="rounded-lg border border-[var(--border)] p-3"
+      {subject &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subject-title"
+            onMouseDown={() => setSubject(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              display: "grid",
+              placeItems: "center",
+              padding: "1rem",
+              overflowY: "auto",
+              backgroundColor: "rgba(18, 14, 10, 0.76)",
+            }}
+          >
+            <section
+              className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl"
+              onMouseDown={(event) => event.stopPropagation()}
+              style={{
+                width: "min(48rem, calc(100vw - 2rem))",
+                backgroundColor: "#ffffff",
+                color: "#1d1712",
+                borderColor: "#d8cdbd",
+                opacity: 1,
+                boxShadow: "0 24px 64px rgba(0, 0, 0, 0.42)",
+              }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">
+                    Immutable subject snapshot
+                  </p>
+                  <h2
+                    id="subject-title"
+                    className="mt-1 break-all font-serif text-2xl font-semibold"
                   >
-                    <p className="font-medium">
-                      {reason.message}{" "}
-                      <span className="text-[var(--muted-foreground)]">
-                        (+{reason.weight})
-                      </span>
-                    </p>
-                    {reason.source_addresses.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {reason.source_addresses.map((source) => (
-                          <a
-                            key={source}
-                            className="inline-flex items-center gap-1 text-xs underline"
-                            href={getExplorerUrl(`/address/${source}`)}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {shortAddress(source)}{" "}
-                            <ExternalLink className="size-3" />
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                    {subject.subject_address}
+                  </h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close subject details"
+                  onClick={() => setSubject(null)}
+                >
+                  ×
+                </Button>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <p>
+                  Score <strong>{subject.score}/100</strong>
+                </p>
+                <p>
+                  Risk band{" "}
+                  <strong className="capitalize">{subject.risk_band}</strong>
+                </p>
+                <p>
+                  Model <strong>{subject.model_version}</strong>
+                </p>
+                <p>
+                  Finalized slot <strong>{subject.checkpoint_slot}</strong>
+                </p>
+              </div>
+              {subject.checkpoint_signature && (
+                <a
+                  className="mt-3 inline-flex items-center gap-1 text-sm underline"
+                  href={getExplorerUrl(`/tx/${subject.checkpoint_signature}`)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View finalized checkpoint <ExternalLink className="size-3" />
+                </a>
+              )}
+              <section className="mt-6">
+                <h3 className="font-serif text-xl font-semibold">
+                  Explainable reasons
+                </h3>
+                <ul className="mt-3 space-y-3">
+                  {subject.reasons.map((reason) => (
+                    <li
+                      key={reason.code}
+                      className="rounded-lg border border-[var(--border)] p-3"
+                      style={{
+                        backgroundColor: "#fffdf9",
+                        borderColor: "#ded3c3",
+                      }}
+                    >
+                      <p className="font-medium">
+                        {reason.message}{" "}
+                        <span className="text-[var(--muted-foreground)]">
+                          (+{reason.weight})
+                        </span>
+                      </p>
+                      {reason.source_addresses.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {reason.source_addresses.map((source) => (
+                            <a
+                              key={source}
+                              className="inline-flex items-center gap-1 text-xs underline"
+                              href={getExplorerUrl(`/address/${source}`)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {shortAddress(source)}{" "}
+                              <ExternalLink className="size-3" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <details
+                className="mt-6 rounded-lg border border-[var(--border)] p-3"
+                style={{ backgroundColor: "#fffdf9", borderColor: "#ded3c3" }}
+              >
+                <summary className="cursor-pointer text-sm font-medium">
+                  Technical feature snapshot
+                </summary>
+                <pre
+                  className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-[var(--muted-foreground)]"
+                  style={{ color: "#4b4035" }}
+                >
+                  {JSON.stringify(subject.features, null, 2)}
+                </pre>
+              </details>
             </section>
-            <details className="mt-6 rounded-lg border border-[var(--border)] p-3">
-              <summary className="cursor-pointer text-sm font-medium">
-                Technical feature snapshot (admin only)
-              </summary>
-              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-[var(--muted-foreground)]">
-                {JSON.stringify(subject.features, null, 2)}
-              </pre>
-            </details>
-          </section>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </main>
   );
 }
