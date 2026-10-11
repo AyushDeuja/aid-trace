@@ -29,15 +29,27 @@ test("primary navigation remains public while workspace navigation is role-scope
     isAdmin: false,
     isOrganizationAuthority: true,
   });
-  assert.equal(organization.some((item) => item.href === "/org"), false);
+  assert.equal(
+    organization.some((item) => item.href === "/org"),
+    false
+  );
   const admin = primaryNavigation({
     isConnected: true,
     isAdmin: true,
     isOrganizationAuthority: false,
   });
-  assert.equal(admin.some((item) => item.href === "/admin/review"), false);
-  assert.deepEqual(workspaceNavigation.organization.map((item) => item.href), ["/org", "/org/finance", "/org/disasters"]);
-  assert.deepEqual(workspaceNavigation.admin.map((item) => item.href), ["/admin/review", "/org", "/admin/disasters", "/admin/fraud"]);
+  assert.equal(
+    admin.some((item) => item.href === "/admin/review"),
+    false
+  );
+  assert.deepEqual(
+    workspaceNavigation.organization.map((item) => item.href),
+    ["/org", "/org/finance", "/org/verification", "/org/disasters"]
+  );
+  assert.deepEqual(
+    workspaceNavigation.admin.map((item) => item.href),
+    ["/admin/review", "/org", "/admin/disasters", "/admin/fraud"]
+  );
 });
 
 test("donor and combined roles receive the correct non-duplicated tabs", () => {
@@ -46,7 +58,10 @@ test("donor and combined roles receive the correct non-duplicated tabs", () => {
     isAdmin: false,
     isOrganizationAuthority: false,
   });
-  assert.equal(donor.some((item) => item.href === "/dashboard"), false);
+  assert.equal(
+    donor.some((item) => item.href === "/dashboard"),
+    false
+  );
 
   const combined = primaryNavigation({
     isConnected: true,
@@ -58,8 +73,17 @@ test("donor and combined roles receive the correct non-duplicated tabs", () => {
   assert.equal(hrefs.includes("/org"), false);
   assert.equal(hrefs.includes("/admin/review"), false);
   assert.equal(hrefs.includes("/dashboard"), false);
-  assert.deepEqual(workspaceNavigation.donor, [{ href: "/dashboard", label: "My donations" }]);
-  assert.equal(resolveWorkspace({ isConnected: true, isAdmin: true, isOrganizationAuthority: true }), "admin");
+  assert.deepEqual(workspaceNavigation.donor, [
+    { href: "/dashboard", label: "My donations" },
+  ]);
+  assert.equal(
+    resolveWorkspace({
+      isConnected: true,
+      isAdmin: true,
+      isOrganizationAuthority: true,
+    }),
+    "admin"
+  );
 });
 
 test("public and donor view destinations are stable", () => {

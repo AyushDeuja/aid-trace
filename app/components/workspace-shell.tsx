@@ -13,7 +13,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { resolveWorkspace, useViewerRole, type Workspace } from "../lib/hooks/use-viewer-role";
+import {
+  resolveWorkspace,
+  useViewerRole,
+  type Workspace,
+} from "../lib/hooks/use-viewer-role";
 import { workspaceNavigation, type NavigationItem } from "../lib/navigation";
 import { useWallet } from "../lib/wallet/context";
 
@@ -24,27 +28,57 @@ const labels: Record<Exclude<Workspace, "public">, string> = {
 };
 
 function workspaceForPath(pathname: string, workspace: Workspace) {
-  if (pathname.startsWith("/admin")) return workspace === "admin" ? workspace : null;
+  if (pathname.startsWith("/admin"))
+    return workspace === "admin" ? workspace : null;
   if (pathname.startsWith("/org"))
-    return workspace === "admin" || workspace === "organization" ? workspace : null;
-  if (pathname.startsWith("/dashboard")) return workspace === "donor" ? workspace : null;
+    return workspace === "admin" || workspace === "organization"
+      ? workspace
+      : null;
+  if (pathname.startsWith("/dashboard"))
+    return workspace === "donor" ? workspace : null;
   return null;
 }
 
-function isActive(pathname: string, href: string) {
-  return pathname === href || (href !== "/org" && pathname.startsWith(`${href}/`));
+function isActive(pathname: string, item: NavigationItem) {
+  const hrefPath = item.href.split("?")[0];
+  return (
+    pathname === hrefPath ||
+    (hrefPath !== "/org" && pathname.startsWith(`${hrefPath}/`))
+  );
 }
 
-function WorkspaceLinks({ items, pathname, close }: { items: NavigationItem[]; pathname: string; close?: boolean }) {
+function destination(item: NavigationItem) {
+  const organization =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("organization");
+  if (
+    (!item.href.startsWith("/org/finance") &&
+      !item.href.startsWith("/org/verification")) ||
+    !organization
+  )
+    return item.href;
+  return `${item.href}?organization=${encodeURIComponent(organization)}`;
+}
+
+function WorkspaceLinks({
+  items,
+  pathname,
+  close,
+}: {
+  items: NavigationItem[];
+  pathname: string;
+  close?: boolean;
+}) {
   return (
     <nav className="space-y-1" aria-label="Workspace navigation">
       {items.map((item) => {
         const link = (
           <Link
-            href={item.href}
+            href={destination(item)}
             className={cn(
               "block rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-              isActive(pathname, item.href)
+              isActive(pathname, item)
                 ? "bg-[#17130e] text-[#fffaf0]"
                 : "text-foreground hover:bg-[#eee9e1]"
             )}
@@ -52,7 +86,13 @@ function WorkspaceLinks({ items, pathname, close }: { items: NavigationItem[]; p
             {item.label}
           </Link>
         );
-        return close ? <SheetClose asChild key={item.href}>{link}</SheetClose> : <div key={item.href}>{link}</div>;
+        return close ? (
+          <SheetClose asChild key={item.href}>
+            {link}
+          </SheetClose>
+        ) : (
+          <div key={item.href}>{link}</div>
+        );
       })}
     </nav>
   );
@@ -66,7 +106,9 @@ export function WorkspaceShell({ children }: PropsWithChildren) {
     () => resolveWorkspace({ isConnected: Boolean(wallet), ...role }),
     [wallet, role]
   );
-  const activeWorkspace = role.loading ? null : workspaceForPath(pathname, workspace);
+  const activeWorkspace = role.loading
+    ? null
+    : workspaceForPath(pathname, workspace);
 
   if (!activeWorkspace) return <>{children}</>;
 
@@ -76,19 +118,31 @@ export function WorkspaceShell({ children }: PropsWithChildren) {
     <div className="min-h-[calc(100vh-4rem)] bg-[#faf8f4] text-foreground dark:bg-background">
       <div className="mx-auto flex max-w-[1600px]">
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 border-r border-[#ddd7cf] bg-[#fdfcf9] px-4 py-5 lg:block dark:bg-card">
-          <p className="mb-4 px-2 text-[10px] font-semibold tracking-wide text-muted-foreground">{label}</p>
+          <p className="mb-4 px-2 text-[10px] font-semibold tracking-wide text-muted-foreground">
+            {label}
+          </p>
           <WorkspaceLinks items={items} pathname={pathname} />
         </aside>
         <div className="min-w-0 flex-1">
           <div className="border-b border-[#ddd7cf] px-4 py-3 lg:hidden">
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2" aria-label="Open workspace navigation">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  aria-label="Open workspace navigation"
+                >
                   <Menu /> {label}
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 bg-[#fdfcf9] p-4 dark:bg-card">
-                <SheetTitle className="mb-5 text-xs tracking-wide text-muted-foreground">{label}</SheetTitle>
+              <SheetContent
+                side="left"
+                className="w-72 bg-[#fdfcf9] p-4 dark:bg-card"
+              >
+                <SheetTitle className="mb-5 text-xs tracking-wide text-muted-foreground">
+                  {label}
+                </SheetTitle>
                 <WorkspaceLinks items={items} pathname={pathname} close />
               </SheetContent>
             </Sheet>
