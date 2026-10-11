@@ -16,12 +16,25 @@ function DialogContent({
 }: React.ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
-      <Primitive.Overlay className="fixed inset-0 z-50 bg-black/25 backdrop-blur-[1px]" />
+      <Primitive.Overlay
+        className="fixed inset-0 backdrop-blur-[1px]"
+        style={{ zIndex: 9998, backgroundColor: "rgba(18, 14, 10, 0.68)" }}
+      />
       <Primitive.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 text-card-foreground shadow-xl focus:outline-none",
+          "fixed top-1/2 left-1/2 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border p-6 shadow-xl focus:outline-none",
           className
         )}
+        style={{
+          zIndex: 9999,
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          backgroundColor: "#ffffff",
+          color: "#1d1712",
+          borderColor: "#d8cdbd",
+          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.42)",
+        }}
         {...props}
       >
         {children}

@@ -124,7 +124,7 @@ export function TrustAssessmentPanel({ campaign }: { campaign: string }) {
             {canonical.riskBand.replaceAll("_", " ").toUpperCase()} advisory
             risk · score {canonical.score}/100
           </p>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-foreground/70">
             Canonical Solana-confirmed assessment · sequence{" "}
             {canonical.sequence}
           </p>
@@ -174,7 +174,7 @@ export function TrustAssessmentPanel({ campaign }: { campaign: string }) {
             {model.evaluation.risk_band.toUpperCase()} advisory risk · score{" "}
             {model.evaluation.score}/100
           </p>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-black ">
             {state === "canonical"
               ? "Canonical Solana-confirmed assessment"
               : "Assessment is pending canonical settlement"}
@@ -186,14 +186,14 @@ export function TrustAssessmentPanel({ campaign }: { campaign: string }) {
           </ul>
         </>
       ) : (
-        <p className="text-sm text-muted">
+        <p className="text-sm text-foreground/70">
           {state === "unavailable"
             ? "Assessment unavailable. Donations remain available."
             : "Assessment pending; no canonical trust score exists yet."}
         </p>
       )}
       {model?.write && (
-        <p className="break-all text-xs text-muted">
+        <p className="break-all text-xs text-foreground/70">
           {model.write.base_commit_signature ? (
             <a
               className="underline"
