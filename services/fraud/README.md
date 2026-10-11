@@ -12,28 +12,29 @@ From the repository root, apply the shared schema migration first:
 npm run db:migrate
 ```
 
-Create a Python virtual environment, install dependencies, and export the same
-`DATABASE_URL` used by the Next.js application:
+Create a Python virtual environment once, install dependencies, and configure
+the root server-only `.env` with the same `DATABASE_URL` used by Next.js plus
+`FRAUD_SERVICE_URL=http://127.0.0.1:8001`:
 
 ```bash
 cd services/fraud
-python -m venv .venv
-source .venv/bin/activate   # Windows PowerShell: .venv\\Scripts\\Activate.ps1
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1   # Unix: source .venv/bin/activate
 pip install -r requirements.txt
-export DATABASE_URL='postgresql://...'
+cd ../..
 ```
 
-Run one advisory scoring pass after `npm run index:chain`:
+From the repository root, the normal local workflow is:
 
 ```bash
-PYTHONPATH=. python -m fraud_service.cli --cluster devnet
+npm run db:migrate
+npm run index:chain
+npm run fraud:score
+npm run fraud:dev
 ```
 
-Start the API:
-
-```bash
-PYTHONPATH=. uvicorn fraud_service.app:app --reload --port 8001
-```
+Run `npm run dev` in a second terminal. Re-run indexing and scoring after new
+finalized projections are available.
 
 Use `http://localhost:8001/docs` for the local API documentation. The only
 mutable endpoints write advisory Postgres evaluations/findings/reviews; none

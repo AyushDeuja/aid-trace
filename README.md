@@ -102,24 +102,28 @@ Solana RPC client, or permission to change campaign/fund state. Its initial
 project has no labelled fraud dataset yet.
 
 After applying migrations, create a Python virtual environment and install the
-service dependencies:
+service dependencies once. In PowerShell:
 
 ```bash
 cd services/fraud
-python -m venv .venv
-source .venv/bin/activate
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 cd ../..
 ```
 
-With `DATABASE_URL` exported, run a finalized index and then one manual
-advisory scoring pass:
+Ensure the server-only `.env` has the same `DATABASE_URL` as the app and
+`FRAUD_SERVICE_URL=http://127.0.0.1:8001`. Then, from the repository root,
+start the supporting work in one terminal:
 
 ```bash
 npm run index:chain
 npm run fraud:score
 npm run fraud:dev
 ```
+
+Start Next.js in a second terminal with `npm run dev`. Re-run `npm run
+index:chain` and `npm run fraud:score` after finalized chain projections change.
 
 The service API documentation is at `http://localhost:8001/docs`. Medium and
 high findings are a human-review queue, never a fraud verdict or automatic
