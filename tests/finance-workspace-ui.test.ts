@@ -21,6 +21,7 @@ test("finance and verification workspaces retain their canonical handlers", () =
   assert.match(verification, /Add evidence/);
   assert.match(verification, /Inspect evidence/);
   assert.match(verification, /disabled={!attached}/);
+  assert.match(verification, /verificationQueueState/);
   assert.match(verification, /verifyDeliveryIx/);
   assert.match(verification, /fetchFinanceSnapshot/);
   assert.match(finance, /fetchFinanceSnapshot/);

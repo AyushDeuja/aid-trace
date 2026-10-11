@@ -64,6 +64,13 @@ function verificationState(
   return evidenceReviewStatus(item, hasEvidence);
 }
 
+// A recorded disbursement belongs in the pending work queue even before its
+// evidence is uploaded. The card separately labels that state as Missing
+// evidence and keeps Inspect disabled until a digest-linked file exists.
+function verificationQueueState(item: Disbursement): Filter {
+  return item.status === "Recorded" ? "Pending" : item.status;
+}
+
 function VerificationPageClient() {
   const { wallet } = useWallet();
   const { cluster, getExplorerUrl } = useCluster();
@@ -205,11 +212,8 @@ function VerificationPageClient() {
     verifiers.some((item) => item.active && item.verifier === walletAddress);
   const visible = useMemo(
     () =>
-      disbursements.filter(
-        (item) =>
-          verificationState(item, !!evidenceFor(item.address)) === filter
-      ),
-    [disbursements, evidenceFor, filter]
+      disbursements.filter((item) => verificationQueueState(item) === filter),
+    [disbursements, filter]
   );
   const counts = useMemo(
     () =>
@@ -218,13 +222,12 @@ function VerificationPageClient() {
           (state) => [
             state,
             disbursements.filter(
-              (item) =>
-                verificationState(item, !!evidenceFor(item.address)) === state
+              (item) => verificationQueueState(item) === state
             ).length,
           ]
         )
       ) as Record<Filter, number>,
-    [disbursements, evidenceFor]
+    [disbursements]
   );
 
   const transact = async (
