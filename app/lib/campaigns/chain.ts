@@ -336,6 +336,14 @@ export async function fetchDonation(
   const raw = Uint8Array.from(atob(result.value.data[0]), (c) =>
     c.charCodeAt(0)
   );
+  return decodeDonation(key, campaign, id, raw);
+}
+export async function decodeDonation(
+  key: Address,
+  campaign: Address,
+  id: bigint,
+  raw: Uint8Array
+) {
   if (
     raw.length !== 98 ||
     !(await discriminator("account", "Donation")).every((b, i) => raw[i] === b)
@@ -358,6 +366,40 @@ export async function fetchDonation(
     occurredAt: v.getBigInt64(89, true),
     bump: raw[97],
   };
+}
+
+/** Canonical fallback for donor history when the PostgreSQL index is catching up. */
+export async function listDonations(cluster: ClusterMoniker) {
+  const result = await rpcCall<
+    Array<{
+      pubkey: string;
+      account: { owner: string; data: [string, string] };
+    }>
+  >(cluster, "getProgramAccounts", [
+    PROGRAM_ID,
+    { encoding: "base64", commitment: "confirmed" },
+  ]);
+  const donations: Awaited<ReturnType<typeof decodeDonation>>[] = [];
+  for (const item of result) {
+    try {
+      const raw = Uint8Array.from(atob(item.account.data[0]), (char) =>
+        char.charCodeAt(0)
+      );
+      if (raw.length !== 98) continue;
+      const campaign = addressDecoder.decode(raw.slice(8, 40));
+      const id = new DataView(
+        raw.buffer,
+        raw.byteOffset,
+        raw.byteLength
+      ).getBigUint64(72, true);
+      donations.push(
+        await decodeDonation(address(item.pubkey), campaign, id, raw)
+      );
+    } catch {
+      // Other program accounts and malformed records are intentionally ignored.
+    }
+  }
+  return donations;
 }
 export async function listCampaigns(cluster: ClusterMoniker) {
   const result = await rpcCall<

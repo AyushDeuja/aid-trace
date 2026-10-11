@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useCluster } from "../components/cluster-context";
 import { useWallet } from "../lib/wallet/context";
 import { displaySol } from "../lib/campaigns/amount";
+import { listDonations } from "../lib/campaigns/chain";
 
 type Donation = {
   address: string;
@@ -18,6 +19,7 @@ type Donation = {
   occurredAt: string;
   sourceSignature: string | null;
   indexedAt: string;
+  canonicalRecord?: boolean;
   metadata: { title: string; location: string } | null;
   metadataState: string;
   campaignState: string;
@@ -81,11 +83,49 @@ export function DonorWorkspace({
     }
     setState("loading");
     try {
-      const response = await fetch(
+      const indexed: Model | null = await fetch(
         `/api/read/donations?cluster=${cluster}&wallet=${walletAddress}`
+      )
+        .then(async (response) =>
+          response.ok ? ((await response.json()) as Model) : null
+        )
+        .catch(() => null);
+      const canonical = await listDonations(cluster).catch(() => []);
+      const indexedByAddress = new Map(
+        (indexed?.donations || []).map((item) => [item.address, item])
       );
-      if (!response.ok) throw new Error();
-      setModel(await response.json());
+      const donations = canonical
+        .filter((item) => item.donor === walletAddress)
+        .map(
+          (item): Donation =>
+            indexedByAddress.get(item.address) || {
+              address: item.address,
+              campaign: item.campaign,
+              donor: item.donor,
+              amount: item.amount.toString(),
+              source: item.source,
+              occurredAt: item.occurredAt.toString(),
+              sourceSignature: null,
+              indexedAt: new Date().toISOString(),
+              canonicalRecord: true,
+              metadata: null,
+              metadataState: "unavailable",
+              campaignState: "Canonical confirmation",
+              campaignRaised: "0",
+              campaignTarget: "0",
+              campaignProgress: {
+                allocated: "0",
+                disbursed: "0",
+                verified: "0",
+              },
+            }
+        );
+      for (const item of indexed?.donations || []) {
+        if (!donations.some((donation) => donation.address === item.address)) {
+          donations.push(item);
+        }
+      }
+      setModel({ donations, checkpoint: indexed?.checkpoint || null });
       setState("idle");
     } catch {
       setState("unavailable");
@@ -210,6 +250,15 @@ export function DonorWorkspace({
                     >
                       {short(item.sourceSignature)}{" "}
                       <ExternalLink className="size-3" />
+                    </a>
+                  ) : item.canonicalRecord ? (
+                    <a
+                      className="inline-flex items-center gap-1 text-primary underline"
+                      target="_blank"
+                      rel="noreferrer"
+                      href={getExplorerUrl(`/address/${item.address}`)}
+                    >
+                      Canonical record <ExternalLink className="size-3" />
                     </a>
                   ) : (
                     <span className="text-muted-foreground">

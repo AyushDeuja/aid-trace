@@ -18,6 +18,8 @@ test("donor screens show factual campaign-level traceability without unsupported
   assert.match(workspace, /Campaign-level progress/);
   assert.match(workspace, /Connect your wallet/);
   assert.match(workspace, /My donations/);
+  assert.match(workspace, /listDonations/);
+  assert.match(workspace, /Canonical record/);
   assert.doesNotMatch(workspace, /Round-Up/);
   assert.doesNotMatch(workspace, /Export receipts/);
 });
