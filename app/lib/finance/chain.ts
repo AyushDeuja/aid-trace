@@ -473,7 +473,9 @@ async function programAccounts(cluster: ClusterMoniker) {
   ]);
   programAccountsCache.set(cacheKey, {
     promise,
-    expiresAt: Date.now() + 5_000,
+    // Reuse one confirmed program scan while users move between Finance and
+    // Verification. Transaction handlers explicitly invalidate this cache.
+    expiresAt: Date.now() + 20_000,
   });
   try {
     return await promise;
