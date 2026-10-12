@@ -38,6 +38,7 @@ type ListedOrganization = Omit<
   verifiedDeliveryCount: string;
   nextCampaignId: string;
   metadata?: { name: string; description: string; website?: string } | null;
+  canonicalState?: "unavailable";
 };
 
 const shortError = (error: unknown, fallback: string) => {
@@ -67,7 +68,9 @@ export default function OrganizationPage() {
     setLoading(true);
     try {
       const [adminKey, response] = await Promise.all([
-        fetchAdmin(cluster),
+        // The list remains useful when the optional admin-role lookup is
+        // temporarily throttled by the public RPC.
+        fetchAdmin(cluster).catch(() => null),
         fetch(`/api/organizations?cluster=${cluster}`),
       ]);
       if (!response.ok) throw new Error("Could not load indexed organizations");
@@ -229,6 +232,11 @@ export default function OrganizationPage() {
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {ellipsify(item.address, 6)}
           </p>
+          {item.canonicalState === "unavailable" && (
+            <p className="mt-1 text-xs text-amber-700">
+              Indexed record — canonical refresh pending
+            </p>
+          )}
         </div>
       ),
     },

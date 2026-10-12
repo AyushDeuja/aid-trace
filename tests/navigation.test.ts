@@ -7,10 +7,7 @@ import {
   publicView,
   workspaceNavigation,
 } from "../app/lib/navigation";
-import {
-  resolveWorkspace,
-  workspaceHome,
-} from "../app/lib/hooks/use-viewer-role";
+import { resolveWorkspace } from "../app/lib/hooks/use-viewer-role";
 
 test("public navigation exposes campaigns and how it works only", () => {
   assert.deepEqual(
@@ -95,25 +92,13 @@ test("public and donor view destinations are stable", () => {
   assert.equal(donorView.href, "/dashboard");
 });
 
-test("canonical workspaces have stable redirect destinations", () => {
-  assert.equal(workspaceHome("admin"), "/admin/review");
-  assert.equal(workspaceHome("organization"), "/org");
-  assert.equal(workspaceHome("donor"), "/dashboard");
-  assert.equal(workspaceHome("public"), "/");
-});
-
-test("global redirect is mounted once beneath the wallet provider", () => {
+test("workspace links are not overridden by a global role redirect", () => {
   const providers = readFileSync("app/components/providers.tsx", "utf8");
-  const redirect = readFileSync(
-    "app/components/wallet-role-redirect.tsx",
-    "utf8"
+  assert.doesNotMatch(providers, /WalletRoleRedirect/);
+  assert.doesNotMatch(
+    readFileSync("app/lib/hooks/use-viewer-role.ts", "utf8"),
+    /workspaceHome/
   );
-  const home = readFileSync("app/page.tsx", "utf8");
-
-  assert.match(providers, /<WalletRoleRedirect\s*\/>/);
-  assert.match(redirect, /if \(wallet && role\.loading\) return/);
-  assert.match(redirect, /router\.replace\(destination\)/);
-  assert.doesNotMatch(home, /router\.replace/);
 });
 
 test("navbar has a single scrollable row without a sheet menu", () => {

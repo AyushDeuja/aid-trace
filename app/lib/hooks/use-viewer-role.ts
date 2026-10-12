@@ -18,25 +18,40 @@ export type ViewerRole = {
 
 export type Workspace = "public" | "donor" | "organization" | "admin";
 
-/** The single landing route for each canonical workspace role. */
-export function workspaceHome(workspace: Workspace): string {
-  switch (workspace) {
-    case "admin":
-      return "/admin/review";
-    case "organization":
-      return "/org";
-    case "donor":
-      return "/dashboard";
-    case "public":
-      return "/";
-  }
-}
-
 const publicRole: ViewerRole = {
   isAdmin: false,
   isOrganizationAuthority: false,
   loading: false,
 };
+
+type ResolvedViewerRole = Omit<ViewerRole, "loading">;
+const roleReadCache = new Map<
+  string,
+  { promise: Promise<ResolvedViewerRole>; expiresAt: number }
+>();
+
+function readViewerRole(cluster: string, walletAddress: string) {
+  const key = `${cluster}:${walletAddress}`;
+  const cached = roleReadCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+  const promise = Promise.all([
+    fetchAdmin(cluster as Parameters<typeof fetchAdmin>[0]),
+    organizationPda(address(walletAddress)).then((key) =>
+      fetchOrganization(cluster as Parameters<typeof fetchOrganization>[0], key)
+    ),
+  ])
+    .then(([admin, organization]) => ({
+      isAdmin: admin === walletAddress,
+      isOrganizationAuthority: organization?.authority === walletAddress,
+    }))
+    .catch((error) => {
+      roleReadCache.delete(key);
+      throw error;
+    });
+  roleReadCache.set(key, { promise, expiresAt: Date.now() + 15_000 });
+  return promise;
+}
 
 /** Derives navigation roles from canonical Solana accounts, never browser claims. */
 export function useViewerRole(): ViewerRole {
@@ -62,17 +77,11 @@ export function useViewerRole(): ViewerRole {
     }
 
     update({ ...publicRole, loading: true });
-    void Promise.all([
-      fetchAdmin(cluster),
-      organizationPda(address(walletAddress)).then((key) =>
-        fetchOrganization(cluster, key)
-      ),
-    ])
-      .then(([admin, organization]) => {
+    void readViewerRole(cluster, walletAddress)
+      .then((resolved) => {
         if (!active) return;
         update({
-          isAdmin: admin === walletAddress,
-          isOrganizationAuthority: organization?.authority === walletAddress,
+          ...resolved,
           loading: false,
         });
       })

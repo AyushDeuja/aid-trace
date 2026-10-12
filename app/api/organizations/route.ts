@@ -17,14 +17,14 @@ export async function GET(request: NextRequest) {
     // during Devnet development.  Only list records indexed for the program
     // and cluster that this request is reading.
     const rows = await database().query(
-      `SELECT address, metadata_uri
+      `SELECT address, metadata_digest, metadata_uri, payload
        FROM chain_organization_projection
        WHERE cluster = $1 AND program_id = $2
        ORDER BY updated_at DESC
        LIMIT 100`,
       [cluster, PROGRAM_ID]
     );
-    const organizations = await Promise.all(
+    const organizationReads = await Promise.allSettled(
       rows.rows.map(async (row) => {
         const canonical = await fetchOrganization(
           cluster,
@@ -50,7 +50,37 @@ export async function GET(request: NextRequest) {
         };
       })
     );
-    return NextResponse.json(organizations.filter(Boolean));
+    // Canonical account reads are authoritative when available, but one
+    // throttled public-RPC request must not hide every indexed organization.
+    const organizations: Record<string, unknown>[] = organizationReads.map(
+      (result, index) => {
+        if (result.status === "fulfilled" && result.value) return result.value;
+        const row = rows.rows[index];
+        const payload = row.payload as {
+          founder?: string;
+          authority?: string;
+          pendingAuthority?: string | null;
+          status?: string;
+          verified?: boolean;
+          verifiedDeliveryCount?: string;
+          nextCampaignId?: string;
+        };
+        return {
+          address: row.address,
+          founder: payload.founder || "Unavailable",
+          authority: payload.authority || "Unavailable",
+          pendingAuthority: payload.pendingAuthority || null,
+          metadataDigest: row.metadata_digest,
+          status: payload.status || "Pending",
+          verified: Boolean(payload.verified),
+          verifiedDeliveryCount: String(payload.verifiedDeliveryCount || "0"),
+          nextCampaignId: String(payload.nextCampaignId || "0"),
+          metadata: null,
+          canonicalState: "unavailable",
+        };
+      }
+    );
+    return NextResponse.json(organizations);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Query failed" },
